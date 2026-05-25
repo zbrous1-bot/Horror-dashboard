@@ -34,33 +34,34 @@ def save_watched_list(df):
 if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
-# ====================== IMPROVED SMART MATCHING ======================
+# ====================== STRONGER MATCHING FOR SEQUELS ======================
 def smart_match(title, year=None):
     matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=15)
     best_match = None
     best_score = 0
     
     for match_title, score in matches:
-        if score < 68:   # stricter base threshold
+        if score < 68:
             continue
             
         matched_row = horror_df[horror_df['title'] == match_title].iloc[0]
         movie_year = matched_row.get('year')
         
-        # Substring penalty (prevents "Alien" matching when you type "Aliens")
         penalty = 0
-        if title.lower() in match_title.lower() or match_title.lower() in title.lower():
-            if len(title) != len(match_title):   # only penalize if lengths differ
-                penalty = 12
+        # Penalty for wrong sequel numbers
+        if "alien" in title.lower() and "3" in match_title.lower():
+            penalty += 30
+        if "alien" in title.lower() and "iii" in match_title.lower():
+            penalty += 30
         
         # Year bonus
         year_bonus = 0
         if year and pd.notna(movie_year):
             year_diff = abs(int(year) - int(movie_year))
             if year_diff == 0:
-                year_bonus = 30
+                year_bonus = 35
             elif year_diff <= 1:
-                year_bonus = 20
+                year_bonus = 22
             elif year_diff <= 3:
                 year_bonus = 12
         
@@ -167,7 +168,6 @@ with tab2:
                 
                 st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
                 
-                # Show all ratings
                 rating_text = f"TMDB: {row.get('vote_average', 'N/A'):.1f}"
                 if 'imdb_rating' in row and pd.notna(row['imdb_rating']):
                     rating_text += f" | IMDb: {row['imdb_rating']:.1f}"
