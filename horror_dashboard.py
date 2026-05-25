@@ -11,18 +11,17 @@ def load_horror_data():
     df = pd.read_csv("best_horror_movies.csv")
     df = df.dropna(subset=['movie_title', 'movie_info'])
     
-    # Rename columns to match our code
+    # Rename columns to make them easier to use
     df = df.rename(columns={
         'movie_title': 'title',
         'movie_info': 'overview',
         'directors': 'director',
         'actors': 'cast',
-        'original_release_date': 'year'
+        'original_release_date': 'release_date'
     })
     
-    # Extract year from date if needed
-    if df['year'].dtype == 'object':
-        df['year'] = pd.to_datetime(df['year'], errors='coerce').dt.year
+    # Extract only the year from the date column
+    df['year'] = pd.to_datetime(df['release_date'], errors='coerce').dt.year
     
     df = df.reset_index(drop=True)
     return df
@@ -102,7 +101,7 @@ if uploaded:
                     'title': best_row['title'],
                     'year': best_row['year'],
                     'rating': row.get('rating'),
-                    'matched_id': int(best_row.name)   # using index as ID for this dataset
+                    'matched_id': best_row.name
                 })
         if matched:
             new_df = pd.DataFrame(matched)
@@ -118,7 +117,7 @@ manual_year = st.sidebar.number_input("Year (optional)", min_value=1900, max_val
 if st.sidebar.button("Add", width='stretch') and manual:
     best_row = smart_match(manual, manual_year)
     if best_row is not None:
-        new_entry = pd.DataFrame([{'title': best_row['title'], 'year': best_row['year'], 'rating': None, 'matched_id': int(best_row.name)}])
+        new_entry = pd.DataFrame([{'title': best_row['title'], 'year': best_row['year'], 'rating': None, 'matched_id': best_row.name}])
         st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
         save_watched_list(st.session_state.watched)
         st.sidebar.success(f"Added: {best_row['title']} ({best_row['year']})")
@@ -175,7 +174,7 @@ with tab2:
                 st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
                 
                 rating_text = f"RT: {row.get('tomatometer_rating', 'N/A')}%"
-                if 'audience_rating' in row:
+                if 'audience_rating' in row and pd.notna(row['audience_rating']):
                     rating_text += f" | Audience: {row['audience_rating']}%"
                 
                 st.caption(rating_text)
@@ -211,4 +210,4 @@ with tab3:
         else:
             st.info("Movie not found. Try different spelling.")
 
-st.sidebar.caption("Rotten Tomatoes dataset loaded")
+st.sidebar.caption("Rotten Tomatoes dataset • Fixed year parsing")
