@@ -57,7 +57,7 @@ if uploaded:
         for _, row in user_df.iterrows():
             title = str(row['title']).strip()
             match = process.extractOne(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio)
-            if match and match[1] >= 75:
+            if match and match[1] >= 82:
                 matched_row = horror_df[horror_df['title'] == match[0]].iloc[0]
                 matched.append({'title': match[0], 'year': matched_row['year'], 'rating': row.get('rating'), 'matched_id': int(matched_row['id'])})
         if matched:
@@ -72,7 +72,7 @@ st.sidebar.subheader("➕ Add Manually")
 manual = st.sidebar.text_input("Movie title")
 if st.sidebar.button("Add", use_container_width=True) and manual:
     match = process.extractOne(manual, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio)
-    if match and match[1] >= 70:
+    if match and match[1] >= 82:
         matched_row = horror_df[horror_df['title'] == match[0]].iloc[0]
         new_entry = pd.DataFrame([{'title': match[0], 'year': matched_row['year'], 'rating': None, 'matched_id': int(matched_row['id'])}])
         st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
