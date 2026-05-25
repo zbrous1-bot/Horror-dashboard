@@ -120,4 +120,4 @@ tab1, tab2, tab3 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 Search
 
 with tab1:
     st.header("Your Watched Horror Movies")
-    if len(st
+    if len(st.session_state.watched) == 0:
