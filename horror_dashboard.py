@@ -7,7 +7,6 @@ import os
 
 st.set_page_config(page_title="Horror Movie Tracker & Recommender", page_icon="👻", layout="wide")
 st.title("👻 Horror Movie Dashboard")
-st.markdown("Track what you've seen • Get smarter recommendations")
 
 # ====================== LOAD DATA ======================
 @st.cache_data
@@ -16,7 +15,6 @@ def load_horror_data():
     df = df.dropna(subset=['title', 'overview'])
     df['year'] = pd.to_datetime(df['release_date'], errors='coerce').dt.year
     
-    # === IMPROVED FEATURES WITH STYLE KEYWORDS ===
     horror_style_keywords = (
         "found footage handheld camera supernatural possession demon paranormal "
         "ghost haunted exorcism slasher psychological slow burn atmospheric "
@@ -31,6 +29,15 @@ def load_horror_data():
     )
     df = df.reset_index(drop=True)
     return df
+
+horror_df = load_horror_data()
+
+@st.cache_data
+def compute_similarity_matrix(features):
+    vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
+    tfidf = vectorizer.fit_transform(features)
+    return cosine_similarity(tfidf)
+
 # ====================== PERSISTENT WATCHED LIST ======================
 WATCHED_FILE = "watched_list.csv"
 
@@ -51,33 +58,36 @@ st.sidebar.header("📥 Import Watched Movies")
 uploaded = st.sidebar.file_uploader("Upload Letterboxd diary.csv", type="csv")
 
 if uploaded:
-    user_df = pd.read_csv(uploaded)
-    if 'Name' in user_df.columns:
-        user_df = user_df.rename(columns={'Name': 'title', 'Year': 'year', 'Rating': 'rating'})
-    if 'title' not in user_df.columns:
-        user_df = user_df.rename(columns={user_df.columns[0]: 'title'})
-    if 'year' not in user_df.columns:
-        user_df['year'] = None
-    if 'rating' not in user_df.columns:
-        user_df['rating'] = None
+    try:
+        user_df = pd.read_csv(uploaded)
+        if 'Name' in user_df.columns:
+            user_df = user_df.rename(columns={'Name': 'title', 'Year': 'year', 'Rating': 'rating'})
+        if 'title' not in user_df.columns:
+            user_df = user_df.rename(columns={user_df.columns[0]: 'title'})
+        if 'year' not in user_df.columns:
+            user_df['year'] = None
+        if 'rating' not in user_df.columns:
+            user_df['rating'] = None
 
-    matched = []
-    for _, row in user_df.iterrows():
-        title = str(row['title']).strip()
-        match = process.extractOne(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio)
-        if match and match[1] >= 75:
-            matched_row = horror_df[horror_df['title'] == match[0]].iloc[0]
-            matched.append({
-                'title': match[0],
-                'year': matched_row['year'],
-                'rating': row.get('rating'),
-                'matched_id': int(matched_row['id'])
-            })
-    if matched:
-        new_df = pd.DataFrame(matched)
-        st.session_state.watched = pd.concat([st.session_state.watched, new_df]).drop_duplicates(subset=['title'])
-        save_watched_list(st.session_state.watched)
-        st.sidebar.success(f"Imported {len(matched)} movies!")
+        matched = []
+        for _, row in user_df.iterrows():
+            title = str(row['title']).strip()
+            match = process.extractOne(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio)
+            if match and match[1] >= 75:
+                matched_row = horror_df[horror_df['title'] == match[0]].iloc[0]
+                matched.append({
+                    'title': match[0],
+                    'year': matched_row['year'],
+                    'rating': row.get('rating'),
+                    'matched_id': int(matched_row['id'])
+                })
+        if matched:
+            new_df = pd.DataFrame(matched)
+            st.session_state.watched = pd.concat([st.session_state.watched, new_df]).drop_duplicates(subset=['title'])
+            save_watched_list(st.session_state.watched)
+            st.sidebar.success(f"Imported {len(matched)} movies!")
+    except Exception as e:
+        st.sidebar.error(f"Error processing file: {e}")
 
 st.sidebar.subheader("➕ Add Manually")
 manual = st.sidebar.text_input("Movie title")
@@ -136,25 +146,15 @@ with tab2:
                 with cols[2]:
                     st.link_button("🔗 TMDB", f"https://www.themoviedb.org/movie/{int(row['id'])}")
                     
-                    # === CLEAN SINGLE BUTTON ===
-                    rating = st.selectbox(
-                        "Rate this movie", 
-                        options=[1, 2, 3, 4, 5], 
-                        index=3, 
-                        key=f"rate_{int(row['id'])}"
-                    )
+                    rating = st.selectbox("Rate this movie", [1,2,3,4,5], index=3, key=f"rate_{int(row['id'])}")
                     if st.button("✅ Mark as Watched", key=f"watch_{int(row['id'])}"):
-                        new_entry = pd.DataFrame([{
-                            'title': row['title'],
-                            'year': row['year'],
-                            'rating': rating,
-                            'matched_id': int(row['id'])
-                        }])
+                        new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': rating, 'matched_id': int(row['id'])}])
                         st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
                         save_watched_list(st.session_state.watched)
-                        st.toast(f"Added with {rating} stars! It will now appear in My Watched.", icon="⭐")
+                        st.toast(f"Added with {rating} stars!", icon="⭐")
                         st.rerun()
                 st.divider()
+
 with tab3:
     st.header("🔍 Check a Movie")
     q = st.text_input("Movie title")
@@ -177,4 +177,4 @@ with tab3:
         else:
             st.info("Movie not found in database.")
 
-st.sidebar.caption("Watched list now saves automatically ⭐")
+st.sidebar.caption("Everything now saves automatically ⭐")
