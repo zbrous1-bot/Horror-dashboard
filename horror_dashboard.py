@@ -21,11 +21,26 @@ def load_horror_data():
 horror_df = load_horror_data()
 
 @st.cache_data
-def compute_similarity_matrix(features):
-    vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
-    tfidf = vectorizer.fit_transform(features)
-    return cosine_similarity(tfidf)
-
+def load_horror_data():
+    df = pd.read_csv("best_horror_movies.csv")
+    df = df.dropna(subset=['title', 'overview'])
+    
+    # Handle year column (this dataset might have different column names)
+    if 'release_year' in df.columns:
+        df['year'] = df['release_year']
+    elif 'year' not in df.columns:
+        df['year'] = pd.to_datetime(df['release_date'], errors='coerce').dt.year
+    
+    horror_style_keywords = "found footage handheld camera supernatural possession demon paranormal ghost haunted exorcism slasher psychological slow burn atmospheric jump scare horror creepy terrifying disturbing"
+    
+    df['features'] = (
+        df['overview'].fillna('') + ' ' + 
+        df.get('director', '').fillna('') + ' ' + 
+        df.get('cast', '').fillna('') + ' ' + 
+        horror_style_keywords
+    )
+    df = df.reset_index(drop=True)
+    return df
 WATCHED_FILE = "watched_list.csv"
 
 def load_watched_list():
