@@ -130,16 +130,25 @@ with tab2:
                 with cols[2]:
                     st.link_button("🔗 TMDB", f"https://www.themoviedb.org/movie/{int(row['id'])}")
                     
-                    if st.button("✅ I’ve already seen this", key=f"seen_{int(row['id'])}"):
-                        rating = st.number_input(f"Rate {row['title']} (1-5)", 1, 5, 4, key=f"rate_{int(row['id'])}")
-                        if st.button("Save", key=f"save_{int(row['id'])}"):
-                            new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': rating, 'matched_id': int(row['id'])}])
-                            st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
-                            save_watched_list(st.session_state.watched)
-                            st.toast(f"Added with {rating} stars!", icon="⭐")
-                            st.rerun()
+                    # === CLEAN SINGLE BUTTON ===
+                    rating = st.selectbox(
+                        "Rate this movie", 
+                        options=[1, 2, 3, 4, 5], 
+                        index=3, 
+                        key=f"rate_{int(row['id'])}"
+                    )
+                    if st.button("✅ Mark as Watched", key=f"watch_{int(row['id'])}"):
+                        new_entry = pd.DataFrame([{
+                            'title': row['title'],
+                            'year': row['year'],
+                            'rating': rating,
+                            'matched_id': int(row['id'])
+                        }])
+                        st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
+                        save_watched_list(st.session_state.watched)
+                        st.toast(f"Added with {rating} stars! It will now appear in My Watched.", icon="⭐")
+                        st.rerun()
                 st.divider()
-
 with tab3:
     st.header("🔍 Check a Movie")
     q = st.text_input("Movie title")
