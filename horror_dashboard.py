@@ -9,17 +9,6 @@ st.set_page_config(page_title="Horror Movie Tracker", page_icon="👻", layout="
 st.title("👻 Horror Dashboard")
 
 @st.cache_data
-def load_horror_data():
-    df = pd.read_csv("best_horror_movies.csv")
-    df = df.dropna(subset=['title', 'overview'])
-    df['year'] = pd.to_datetime(df['release_date'], errors='coerce').dt.year
-    horror_style_keywords = "found footage handheld camera supernatural possession demon paranormal ghost haunted exorcism slasher psychological slow burn atmospheric jump scare horror creepy terrifying disturbing"
-    df['features'] = df['overview'].fillna('') + ' ' + df['director'].fillna('') + ' ' + df['cast'].fillna('') + ' ' + horror_style_keywords
-    df = df.reset_index(drop=True)
-    return df
-
-horror_df = load_horror_data()
-
 @st.cache_data
 def load_horror_data():
     df = pd.read_csv("best_horror_movies.csv")
@@ -33,7 +22,7 @@ def load_horror_data():
     
     horror_style_keywords = "found footage handheld camera supernatural possession demon paranormal ghost haunted exorcism slasher psychological slow burn atmospheric jump scare horror creepy terrifying disturbing"
     
-    # Safely get director and cast columns (they might not exist)
+    # Safely get director and cast (they might not exist in the new dataset)
     director_col = df.get('director', pd.Series([''] * len(df))).fillna('')
     cast_col = df.get('cast', pd.Series([''] * len(df))).fillna('')
     
