@@ -106,7 +106,7 @@ if uploaded:
 st.sidebar.subheader("➕ Add Manually")
 manual = st.sidebar.text_input("Movie title")
 manual_year = st.sidebar.number_input("Year (optional)", min_value=1900, max_value=2030, value=2025, step=1)
-if st.sidebar.button("Add", use_container_width=True) and manual:
+if st.sidebar.button("Add", width='stretch') and manual:
     best_row = smart_match(manual, manual_year)
     if best_row is not None:
         new_entry = pd.DataFrame([{'title': best_row['title'], 'year': best_row['year'], 'rating': None, 'matched_id': int(best_row['id'])}])
@@ -128,12 +128,12 @@ with tab1:
             cols_to_show.append('director')
         display = st.session_state.watched.merge(horror_df[cols_to_show], on='title', how='left')
         final_cols = [c for c in ['title', 'year', 'rating', 'vote_average', 'director'] if c in display.columns]
-        st.dataframe(display[final_cols], use_container_width=True, height=400)
+        st.dataframe(display[final_cols], width='stretch', height=400)
         col1, col2 = st.columns(2)
         col1.metric("Total Seen", len(st.session_state.watched))
         if st.session_state.watched['rating'].notna().any():
             col2.metric("Avg Rating", f"{st.session_state.watched['rating'].mean():.1f} ⭐")
-        if st.button("Clear All", use_container_width=True):
+        if st.button("Clear All", width='stretch'):
             st.session_state.watched = pd.DataFrame(columns=['title', 'year', 'rating', 'matched_id'])
             save_watched_list(st.session_state.watched)
             st.rerun()
@@ -163,13 +163,13 @@ with tab2:
                     with col1:
                         rating = st.selectbox("Rate", [1,2,3,4,5], index=3, key=f"r_{int(row['id'])}", label_visibility="collapsed")
                     with col2:
-                        if st.button("✅ Mark as Watched", key=f"w_{int(row['id'])}", use_container_width=True):
+                        if st.button("✅ Mark as Watched", key=f"w_{int(row['id'])}", width='stretch'):
                             new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': rating, 'matched_id': int(row['id'])}])
                             st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
                             save_watched_list(st.session_state.watched)
                             st.toast(f"Added with {rating} stars!", icon="⭐")
                             st.rerun()
-                    st.link_button("🔗 TMDB", f"https://www.themoviedb.org/movie/{int(row['id'])}", use_container_width=True)
+                    st.link_button("🔗 TMDB", f"https://www.themoviedb.org/movie/{int(row['id'])}", width='stretch')
                     st.divider()
 
 with tab3:
@@ -186,7 +186,7 @@ with tab3:
                 st.success("✅ You've seen this!")
             else:
                 st.warning("❌ Not in your list yet")
-                if st.button("Add to Watched", use_container_width=True):
+                if st.button("Add to Watched", width='stretch'):
                     new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': int(row['id'])}])
                     st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
                     save_watched_list(st.session_state.watched)
