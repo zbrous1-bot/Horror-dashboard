@@ -47,12 +47,12 @@ def smart_match(title, year=None):
         matched_row = horror_df[horror_df['title'] == match_title].iloc[0]
         movie_year = matched_row.get('year')
         
+        # Heavy penalty for wrong sequels (especially Aliens vs Alien 3)
         penalty = 0
-        # Penalty for wrong sequel numbers
-        if "alien" in title.lower() and "3" in match_title.lower():
-            penalty += 30
-        if "alien" in title.lower() and "iii" in match_title.lower():
-            penalty += 30
+        if "alien" in title.lower() and ("3" in match_title.lower() or "iii" in match_title.lower()):
+            penalty = 40
+        if "alien" in title.lower() and "2" in match_title.lower():
+            penalty = 20
         
         # Year bonus
         year_bonus = 0
@@ -213,4 +213,4 @@ with tab3:
         else:
             st.info("Movie not found. Try different spelling.")
 
-st.sidebar.caption("IMDb + Rotten Tomatoes added")
+st.sidebar.caption("Stronger matching + IMDb/RT ratings")
