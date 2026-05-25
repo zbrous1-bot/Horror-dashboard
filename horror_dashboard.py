@@ -121,4 +121,4 @@ with tab1:
             save_watched_list(st.session_state.watched)
             st.rerun()
     else:
-        st.info("No movies yet. Import from Letterboxd or add manually in the sidebar."
+        st.info("No movies yet. Import from Letterboxd or add manually in the sidebar.")
