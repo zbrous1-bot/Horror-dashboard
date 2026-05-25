@@ -5,8 +5,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 from thefuzz import process, fuzz
 import os
 
-st.set_page_config(page_title="Horror Movie Tracker & Recommender", page_icon="👻", layout="wide")
-st.title("👻 Horror Movie Dashboard")
+st.set_page_config(page_title="Horror Movie Tracker", page_icon="👻", layout="centered")
+
+st.title("👻 Horror Dashboard")
+st.markdown("Track • Recommend • Discover")
 
 # ====================== LOAD DATA ======================
 @st.cache_data
@@ -54,8 +56,8 @@ if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
 # ====================== SIDEBAR ======================
-st.sidebar.header("📥 Import Watched Movies")
-uploaded = st.sidebar.file_uploader("Upload Letterboxd diary.csv", type="csv")
+st.sidebar.header("📥 Import from Letterboxd")
+uploaded = st.sidebar.file_uploader("Upload diary.csv", type="csv")
 
 if uploaded:
     try:
@@ -87,11 +89,11 @@ if uploaded:
             save_watched_list(st.session_state.watched)
             st.sidebar.success(f"Imported {len(matched)} movies!")
     except Exception as e:
-        st.sidebar.error(f"Error processing file: {e}")
+        st.sidebar.error(f"Error: {e}")
 
-st.sidebar.subheader("➕ Add Manually")
+st.sidebar.subheader("➕ Add Movie Manually")
 manual = st.sidebar.text_input("Movie title")
-if st.sidebar.button("Add") and manual:
+if st.sidebar.button("Add to Watched", use_container_width=True) and manual:
     match = process.extractOne(manual, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio)
     if match and match[1] >= 70:
         matched_row = horror_df[horror_df['title'] == match[0]].iloc[0]
@@ -101,80 +103,22 @@ if st.sidebar.button("Add") and manual:
         st.sidebar.success(f"Added: {match[0]}")
 
 # ====================== TABS ======================
-tab1, tab2, tab3 = st.tabs(["📋 My Watched", "🎯 Recommendations", "🔍 Check a Movie"])
+tab1, tab2, tab3 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 Search"])
 
 with tab1:
-    st.header("Your Horror Watch History")
+    st.header("Your Watched Horror Movies")
     if len(st.session_state.watched) > 0:
         display = st.session_state.watched.merge(horror_df[['title', 'vote_average', 'director']], on='title', how='left')
-        st.dataframe(display[['title', 'year', 'rating', 'vote_average', 'director']], use_container_width=True)
-        c1, c2 = st.columns(2)
-        c1.metric("Movies Seen", len(st.session_state.watched))
+        st.dataframe(display[['title', 'year', 'rating', 'vote_average', 'director']], use_container_width=True, height=400)
+        
+        col1, col2 = st.columns(2)
+        col1.metric("Total Seen", len(st.session_state.watched))
         if st.session_state.watched['rating'].notna().any():
-            c2.metric("Avg Your Rating", f"{st.session_state.watched['rating'].mean():.1f}")
-        if st.button("Clear All"):
+            col2.metric("Avg Rating", f"{st.session_state.watched['rating'].mean():.1f} ⭐")
+        
+        if st.button("Clear All Watched", use_container_width=True):
             st.session_state.watched = pd.DataFrame(columns=['title', 'year', 'rating', 'matched_id'])
             save_watched_list(st.session_state.watched)
             st.rerun()
     else:
-        st.info("No movies yet. Import or add some in the sidebar")
-
-with tab2:
-    st.header("🎯 Personalized Recommendations")
-    if len(st.session_state.watched) == 0:
-        st.warning("Add some watched movies first!")
-    else:
-        sim = compute_similarity_matrix(horror_df['features'])
-        watched_titles = st.session_state.watched['title'].tolist()
-        watched_idx = horror_df[horror_df['title'].isin(watched_titles)].index.tolist()
-        
-        if len(watched_idx) > 0:
-            scores = sim[watched_idx].mean(axis=0)
-            recs = horror_df.copy()
-            recs['similarity'] = scores
-            recs = recs[~recs['title'].isin(watched_titles)]
-            recs = recs.sort_values('similarity', ascending=False).head(12)
-            
-            for _, row in recs.iterrows():
-                cols = st.columns([4, 1.4, 1.6])
-                with cols[0]:
-                    st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-                    st.caption(f"Director: {row['director']} • TMDB: {row['vote_average']:.1f}/10")
-                    st.write(str(row['overview'])[:200] + "...")
-                with cols[1]:
-                    st.metric("Relevance", f"{row['similarity']:.2f}")
-                with cols[2]:
-                    st.link_button("🔗 TMDB", f"https://www.themoviedb.org/movie/{int(row['id'])}")
-                    
-                    rating = st.selectbox("Rate this movie", [1,2,3,4,5], index=3, key=f"rate_{int(row['id'])}")
-                    if st.button("✅ Mark as Watched", key=f"watch_{int(row['id'])}"):
-                        new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': rating, 'matched_id': int(row['id'])}])
-                        st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
-                        save_watched_list(st.session_state.watched)
-                        st.toast(f"Added with {rating} stars!", icon="⭐")
-                        st.rerun()
-                st.divider()
-
-with tab3:
-    st.header("🔍 Check a Movie")
-    q = st.text_input("Movie title")
-    if q:
-        match = process.extractOne(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio)
-        if match and match[1] >= 70:
-            row = horror_df[horror_df['title'] == match[0]].iloc[0]
-            seen = match[0] in st.session_state.watched['title'].values
-            st.subheader(f"{match[0]} ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-            st.write(row['overview'])
-            if seen:
-                st.success("✅ You've seen this!")
-            else:
-                st.warning("❌ Not in your list")
-                if st.button("Add to Watched"):
-                    new_entry = pd.DataFrame([{'title': match[0], 'year': row['year'], 'rating': None, 'matched_id': int(row['id'])}])
-                    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
-                    save_watched_list(st.session_state.watched)
-                    st.rerun()
-        else:
-            st.info("Movie not found in database.")
-
-st.sidebar.caption("Everything now saves automatically ⭐")
+        st.info("No movies yet. Import from
