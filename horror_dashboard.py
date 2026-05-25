@@ -25,18 +25,22 @@ def load_horror_data():
     df = pd.read_csv("best_horror_movies.csv")
     df = df.dropna(subset=['title', 'overview'])
     
-    # Handle year column (this dataset might have different column names)
+    # Handle year column
     if 'release_year' in df.columns:
         df['year'] = df['release_year']
     elif 'year' not in df.columns:
-        df['year'] = pd.to_datetime(df['release_date'], errors='coerce').dt.year
+        df['year'] = pd.to_datetime(df.get('release_date', pd.Series()), errors='coerce').dt.year
     
     horror_style_keywords = "found footage handheld camera supernatural possession demon paranormal ghost haunted exorcism slasher psychological slow burn atmospheric jump scare horror creepy terrifying disturbing"
     
+    # Safely get director and cast columns (they might not exist)
+    director_col = df.get('director', pd.Series([''] * len(df))).fillna('')
+    cast_col = df.get('cast', pd.Series([''] * len(df))).fillna('')
+    
     df['features'] = (
         df['overview'].fillna('') + ' ' + 
-        df.get('director', '').fillna('') + ' ' + 
-        df.get('cast', '').fillna('') + ' ' + 
+        director_col + ' ' + 
+        cast_col + ' ' + 
         horror_style_keywords
     )
     df = df.reset_index(drop=True)
