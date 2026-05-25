@@ -143,7 +143,14 @@ tab1, tab2, tab3 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 Search
 with tab1:
     st.header("Your Watched Horror Movies")
     if len(st.session_state.watched) > 0:
-        display = st.session_state.watched.merge(horror_df[['title', 'vote_average', 'director']], on='title', how='left')
+        # Only select columns that actually exist in the dataset
+cols_to_show = ['title']
+if 'vote_average' in horror_df.columns:
+    cols_to_show.append('vote_average')
+if 'director' in horror_df.columns:
+    cols_to_show.append('director')
+
+display = st.session_state.watched.merge(horror_df[cols_to_show], on='title', how='left')
         st.dataframe(display[['title', 'year', 'rating', 'vote_average', 'director']], use_container_width=True, height=400)
         col1, col2 = st.columns(2)
         col1.metric("Total Seen", len(st.session_state.watched))
