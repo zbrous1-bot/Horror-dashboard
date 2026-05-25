@@ -34,29 +34,42 @@ def save_watched_list(df):
 if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
+# ====================== IMPROVED SMART MATCHING ======================
 def smart_match(title, year=None):
-    matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=10)
+    matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=15)
     best_match = None
     best_score = 0
+    
     for match_title, score in matches:
-        if score < 65:
+        if score < 68:   # stricter base threshold
             continue
+            
         matched_row = horror_df[horror_df['title'] == match_title].iloc[0]
         movie_year = matched_row.get('year')
+        
+        # Substring penalty (prevents "Alien" matching when you type "Aliens")
+        penalty = 0
+        if title.lower() in match_title.lower() or match_title.lower() in title.lower():
+            if len(title) != len(match_title):   # only penalize if lengths differ
+                penalty = 12
+        
+        # Year bonus
         year_bonus = 0
         if year and pd.notna(movie_year):
             year_diff = abs(int(year) - int(movie_year))
             if year_diff == 0:
-                year_bonus = 25
-            elif year_diff <= 2:
-                year_bonus = 15
-            elif year_diff <= 5:
-                year_bonus = 8
-        final_score = score + year_bonus
+                year_bonus = 30
+            elif year_diff <= 1:
+                year_bonus = 20
+            elif year_diff <= 3:
+                year_bonus = 12
+        
+        final_score = score - penalty + year_bonus
         if final_score > best_score:
             best_score = final_score
             best_match = matched_row
-    if best_match is not None and best_score >= 75:
+    
+    if best_match is not None and best_score >= 78:
         return best_match
     return None
 
@@ -134,33 +147,12 @@ with tab1:
 
 with tab2:
     st.header("🎯 Recommendations For You")
-    
-    subgenre_options = ["Found Footage", "Supernatural / Possession", "Slasher", "Psychological", "Paranormal / Ghost", "Demonic"]
-    selected_subgenres = st.multiselect("Filter by subgenre", subgenre_options, default=[])
-    
     if len(st.session_state.watched) == 0:
         st.warning("Add some watched movies first!")
     else:
         watched_titles = st.session_state.watched['title'].tolist()
         recs = horror_df[~horror_df['title'].isin(watched_titles)].copy()
         
-        # Subgenre filter
-        if selected_subgenres:
-            keyword_map = {
-                "Found Footage": ["found footage", "handheld"],
-                "Supernatural / Possession": ["supernatural", "possession", "demon", "exorcism"],
-                "Slasher": ["slasher", "killer", "blood"],
-                "Psychological": ["psychological", "slow burn"],
-                "Paranormal / Ghost": ["paranormal", "ghost", "haunted"],
-                "Demonic": ["demonic", "devil"]
-            }
-            mask = pd.Series(False, index=recs.index)
-            for genre in selected_subgenres:
-                for kw in keyword_map.get(genre, []):
-                    mask |= recs['overview'].str.contains(kw, case=False, na=False)
-            recs = recs[mask]
-        
-        # Sort
         if 'vote_average' in recs.columns:
             recs = recs.sort_values('vote_average', ascending=False)
         else:
@@ -175,7 +167,7 @@ with tab2:
                 
                 st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
                 
-                # Show all available ratings
+                # Show all ratings
                 rating_text = f"TMDB: {row.get('vote_average', 'N/A'):.1f}"
                 if 'imdb_rating' in row and pd.notna(row['imdb_rating']):
                     rating_text += f" | IMDb: {row['imdb_rating']:.1f}"
@@ -221,4 +213,4 @@ with tab3:
         else:
             st.info("Movie not found. Try different spelling.")
 
-st.sidebar.caption("IMDb + Rotten Tomatoes added where available")
+st.sidebar.caption("IMDb + Rotten Tomatoes added")
