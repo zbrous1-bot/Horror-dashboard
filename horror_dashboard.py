@@ -116,12 +116,24 @@ if st.sidebar.button("Add", width='stretch') and manual:
     best_row = smart_match(manual, manual_year)
     if best_row is not None:
         new_entry = pd.DataFrame([{'title': best_row['title'], 'year': best_row['year'], 'rating': None, 'matched_id': best_row.name}])
-        st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
-        save_watched_list(st.session_state.watched)
-        st.sidebar.success(f"Added: {best_row['title']} ({best_row['year']})")
-        st.rerun()
     else:
-        st.sidebar.error("Movie not found. Try different spelling or add the year.")
+        # Force add if not found in dataset
+        new_entry = pd.DataFrame([{'title': manual, 'year': manual_year, 'rating': None, 'matched_id': 999999}])
+    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+    save_watched_list(st.session_state.watched)
+    st.sidebar.success(f"Added: {manual}")
+    st.rerun()
+
+# Force Add Any Movie (for recent films like The Nun 2)
+st.sidebar.subheader("🎬 Force Add Any Movie")
+force_title = st.sidebar.text_input("Movie title (any movie)")
+force_year = st.sidebar.number_input("Year", min_value=1900, max_value=2030, value=2023, step=1)
+if st.sidebar.button("Force Add", width='stretch') and force_title:
+    new_entry = pd.DataFrame([{'title': force_title, 'year': force_year, 'rating': None, 'matched_id': 999999}])
+    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+    save_watched_list(st.session_state.watched)
+    st.sidebar.success(f"Force added: {force_title} ({force_year})")
+    st.rerun()
 
 # ====================== TABS ======================
 tab1, tab2, tab3 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 Search"])
@@ -188,11 +200,9 @@ with tab2:
         for idx, row in recs.iterrows():
             with st.container():
                 st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-                
                 rating_text = f"RT: {row.get('tomatometer_rating', 'N/A')}%"
                 if 'audience_rating' in row and pd.notna(row['audience_rating']):
                     rating_text += f" | Audience: {row['audience_rating']}%"
-                
                 st.caption(rating_text)
                 st.write(str(row['overview'])[:180] + "..." if len(str(row['overview'])) > 180 else row['overview'])
                 
@@ -202,6 +212,7 @@ with tab2:
                     save_watched_list(st.session_state.watched)
                     st.toast(f"Added {row['title']}!", icon="⭐")
                     st.rerun()
+                st.divider()
 
 with tab3:
     st.header("🔍 Search Movies")
@@ -228,4 +239,4 @@ with tab3:
                         st.toast(f"Added {row['title']}!", icon="⭐")
                         st.rerun()
 
-st.sidebar.caption("Fuzzy search • Delete duplicates • Instant refresh")
+st.sidebar.caption("Force Add enabled • Instant refresh")
