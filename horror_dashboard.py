@@ -76,7 +76,11 @@ DISLIKED_FILE = "disliked_list.csv"
 
 def load_watched_list():
     if os.path.exists(WATCHED_FILE):
-        return pd.read_csv(WATCHED_FILE)
+        df = pd.read_csv(WATCHED_FILE)
+        # Make sure poster_path column exists
+        if 'poster_path' not in df.columns:
+            df['poster_path'] = None
+        return df
     return pd.DataFrame(columns=['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
 
 def save_watched_list(df):
@@ -237,17 +241,17 @@ with tab1:
                 col1, col2, col3 = st.columns([1, 5, 1])
                 
                 with col1:
-                    if pd.notna(row.get('poster_path')):
+                    if pd.notna(row.get('poster_path')) and row['poster_path'] != 'None':
                         st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=70)
                     else:
-                        st.caption("No poster")
+                        st.caption("🎬")
                 
                 with col2:
                     genre_tag = f"[{row.get('genre', 'Mixed')}] " if 'genre' in row else ""
                     rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
                     st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text}")
                     if pd.notna(row.get('overview')):
-                        st.caption(str(row['overview'])[:120] + "..." if len(str(row['overview'])) > 120 else row['overview'])
+                        st.caption(str(row['overview'])[:110] + "..." if len(str(row['overview'])) > 110 else row['overview'])
                 
                 with col3:
                     if st.button("🗑️", key=f"del_{i}"):
@@ -329,7 +333,7 @@ with tab2:
                     if pd.notna(row.get('poster_path')):
                         st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=90)
                     else:
-                        st.caption("No poster")
+                        st.caption("🎬")
                 
                 with col2:
                     genre_tag = f"[{row.get('genre', 'Mixed')}] "
@@ -389,7 +393,7 @@ with tab3:
                         if pd.notna(row.get('poster_path')):
                             st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=90)
                         else:
-                            st.caption("No poster")
+                            st.caption("🎬")
                     with col2:
                         st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
                         st.caption(f"TMDB: {row.get('vote_average', 'N/A')}")
@@ -410,4 +414,4 @@ with tab3:
                                 st.rerun()
                 st.divider()
 
-st.sidebar.caption("Thumbnails + cleaner Watched tab + downvote feature")
+st.sidebar.caption("Posters fixed + cleaner Watched tab")
