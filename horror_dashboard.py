@@ -65,8 +65,6 @@ def load_horror_data():
 
 horror_df = load_horror_data()
 
-st.sidebar.caption(f"Loaded {len(horror_df)} movies from TMDB")
-
 # ====================== PERSISTENT WATCHED LIST ======================
 WATCHED_FILE = "watched_list.csv"
 
@@ -81,11 +79,11 @@ def save_watched_list(df):
 if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
-# ====================== VERY LENIENT MATCHING FOR CSV ======================
+# ====================== LENIENT MATCHING FOR CSV ======================
 def import_match(title):
     matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=8)
     for match_title, score in matches:
-        if score >= 55:   # Very lenient for your large CSV
+        if score >= 55:   # Very lenient
             return horror_df[horror_df['title'] == match_title].iloc[0]
     return None
 
@@ -151,8 +149,6 @@ if uploaded:
             save_watched_list(st.session_state.watched)
             st.sidebar.success(f"✅ Imported {len(matched)} movies! ({skipped} skipped)")
             st.rerun()
-        else:
-            st.sidebar.warning("No movies matched. Try Force Add for recent titles.")
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
@@ -254,7 +250,7 @@ with tab3:
     if q:
         matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=12)
         for i, (match_title, score) in enumerate(matches):
-            if score < 65: continue
+            if score < 60: continue   # Lowered threshold for better fuzzy search
             row = horror_df[horror_df['title'] == match_title].iloc[0]
             seen = row['title'] in st.session_state.watched['title'].values
             col1, col2 = st.columns([4, 1])
@@ -271,4 +267,4 @@ with tab3:
                         st.toast(f"Added {row['title']}!", icon="⭐")
                         st.rerun()
 
-st.sidebar.caption("Very lenient CSV import + fuzzy search")
+st.sidebar.caption("Very lenient CSV import + improved fuzzy search")
