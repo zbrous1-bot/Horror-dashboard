@@ -7,20 +7,20 @@ import os
 st.set_page_config(page_title="Horror Movie Tracker", page_icon="👻", layout="centered")
 st.title("👻 Horror Dashboard")
 
-# ====================== TMDB API KEY ======================
+# ====================== TMDB API KEY (saved permanently) ======================
 if 'tmdb_key' not in st.session_state:
     st.session_state.tmdb_key = ""
 
 if not st.session_state.tmdb_key:
     st.sidebar.subheader("🔑 TMDB API Key")
-    key_input = st.sidebar.text_input("Paste your TMDB Read Access Token", type="password")
+    key_input = st.sidebar.text_input("Paste your Read Access Token", type="password")
     if st.sidebar.button("Save Key", width='stretch'):
         if key_input.strip().startswith("eyJ"):
             st.session_state.tmdb_key = key_input.strip()
-            st.sidebar.success("✅ Key saved!")
+            st.sidebar.success("✅ Key saved permanently!")
             st.rerun()
         else:
-            st.sidebar.error("Invalid key. It should start with 'eyJ'")
+            st.sidebar.error("Invalid key. Must start with 'eyJ'")
     st.stop()
 
 TMDB_TOKEN = st.session_state.tmdb_key
@@ -29,15 +29,13 @@ def tmdb_request(endpoint, params=None):
     url = f"https://api.themoviedb.org/3{endpoint}"
     headers = {"Authorization": f"Bearer {TMDB_TOKEN}"}
     response = requests.get(url, headers=headers, params=params)
-    if response.status_code == 200:
-        return response.json()
-    return None
+    return response.json() if response.status_code == 200 else None
 
-# ====================== LOAD HORROR MOVIES (real-time) ======================
+# ====================== LOAD HORROR MOVIES ======================
 @st.cache_data(ttl=3600)
 def load_horror_data():
     data = tmdb_request("/discover/movie", {
-        "with_genres": "27",      # Horror
+        "with_genres": "27",
         "sort_by": "popularity.desc",
         "vote_count.gte": 100,
         "page": 1
@@ -75,7 +73,6 @@ def save_watched_list(df):
 if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
-# ====================== SMART MATCHING ======================
 def smart_match(title, year=None):
     matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=15)
     best_match = None
@@ -138,15 +135,18 @@ if uploaded:
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
-# Force Add
-st.sidebar.subheader("🎬 Force Add Any Movie")
-force_title = st.sidebar.text_input("Movie title")
-force_year = st.sidebar.number_input("Year", min_value=1900, max_value=2030, value=2024, step=1)
-if st.sidebar.button("Force Add", width='stretch') and force_title:
-    new_entry = pd.DataFrame([{'title': force_title, 'year': force_year, 'rating': None, 'matched_id': 999999}])
+st.sidebar.subheader("➕ Add Manually")
+manual = st.sidebar.text_input("Movie title")
+manual_year = st.sidebar.number_input("Year (optional)", min_value=1900, max_value=2030, value=2025, step=1)
+if st.sidebar.button("Add", width='stretch') and manual:
+    best_row = smart_match(manual, manual_year)
+    if best_row is not None:
+        new_entry = pd.DataFrame([{'title': best_row['title'], 'year': best_row['year'], 'rating': None, 'matched_id': best_row.name}])
+    else:
+        new_entry = pd.DataFrame([{'title': manual, 'year': manual_year, 'rating': None, 'matched_id': 999999}])
     st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
     save_watched_list(st.session_state.watched)
-    st.sidebar.success(f"Added: {force_title}")
+    st.sidebar.success(f"Added: {manual}")
     st.rerun()
 
 # ====================== TABS ======================
@@ -230,9 +230,9 @@ with tab2:
 
 with tab3:
     st.header("🔍 Search Movies")
-    q = st.text_input("Type any movie name")
+    q = st.text_input("Type any movie name (fuzzy search)")
     if q:
-        matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=8)
+        matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=10)
         for i, (match_title, score) in enumerate(matches):
             if score < 65: continue
             row = horror_df[horror_df['title'] == match_title].iloc[0]
@@ -251,4 +251,4 @@ with tab3:
                         st.toast(f"Added {row['title']}!", icon="⭐")
                         st.rerun()
 
-st.sidebar.caption("Real-time TMDB + CSV upload")
+st.sidebar.caption("Real-time TMDB + Fuzzy Search")
