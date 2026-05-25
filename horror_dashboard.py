@@ -27,7 +27,7 @@ if not st.session_state.tmdb_key:
             st.sidebar.success("✅ Key saved permanently!")
             st.rerun()
         else:
-            st.sidebar.error("Invalid key. Must start with 'eyJ'")
+            st.sidebar.error("Invalid key")
     st.stop()
 
 TMDB_TOKEN = st.session_state.tmdb_key
@@ -65,6 +65,8 @@ def load_horror_data():
 
 horror_df = load_horror_data()
 
+st.sidebar.caption(f"Loaded {len(horror_df)} movies from TMDB")
+
 # ====================== PERSISTENT WATCHED LIST ======================
 WATCHED_FILE = "watched_list.csv"
 
@@ -79,11 +81,11 @@ def save_watched_list(df):
 if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
-# ====================== LENIENT MATCHING FOR CSV ======================
+# ====================== VERY LENIENT MATCHING FOR CSV ======================
 def import_match(title):
-    matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=5)
+    matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=8)
     for match_title, score in matches:
-        if score >= 72:   # Lenient for bulk CSV import
+        if score >= 55:   # Very lenient for your large CSV
             return horror_df[horror_df['title'] == match_title].iloc[0]
     return None
 
@@ -149,6 +151,8 @@ if uploaded:
             save_watched_list(st.session_state.watched)
             st.sidebar.success(f"✅ Imported {len(matched)} movies! ({skipped} skipped)")
             st.rerun()
+        else:
+            st.sidebar.warning("No movies matched. Try Force Add for recent titles.")
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
@@ -248,7 +252,7 @@ with tab3:
     st.header("🔍 Search Movies")
     q = st.text_input("Type any movie name (fuzzy search)")
     if q:
-        matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=10)
+        matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=12)
         for i, (match_title, score) in enumerate(matches):
             if score < 65: continue
             row = horror_df[horror_df['title'] == match_title].iloc[0]
@@ -267,4 +271,4 @@ with tab3:
                         st.toast(f"Added {row['title']}!", icon="⭐")
                         st.rerun()
 
-st.sidebar.caption("Lenient CSV import + Permanent key")
+st.sidebar.caption("Very lenient CSV import + fuzzy search")
