@@ -23,7 +23,7 @@ def load_horror_data():
     director_col = df.get('director', pd.Series([''] * len(df))).fillna('')
     cast_col = df.get('cast', pd.Series([''] * len(df))).fillna('')
     
-    df['features'] = df['overview'].fillna('') + ' ' + director_col + ' ' + cast_col + ' ' + horror_style_keywords.fillna('')
+    df['features'] = df['overview'].fillna('') + ' ' + director_col + ' ' + cast_col + ' ' + horror_style_keywords).fillna('')
     df = df.reset_index(drop=True)
     return df
 
