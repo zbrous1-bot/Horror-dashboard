@@ -7,7 +7,7 @@ import os
 st.set_page_config(page_title="Horror Movie Tracker", page_icon="👻", layout="centered")
 st.title("👻 Horror Dashboard")
 
-# ====================== TMDB API KEY (saved permanently) ======================
+# ====================== TMDB API KEY ======================
 KEY_FILE = "tmdb_key.txt"
 
 if not os.path.exists(KEY_FILE):
@@ -83,7 +83,7 @@ if 'watched' not in st.session_state:
 def import_match(title):
     matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=10)
     for match_title, score in matches:
-        if score >= 50:   # Very lenient for CSV
+        if score >= 40:   # Extremely lenient for CSV
             return horror_df[horror_df['title'] == match_title].iloc[0]
     return None
 
@@ -129,7 +129,7 @@ if uploaded:
             user_df['rating'] = None
 
         matched = []
-        skipped = 0
+        skipped = []
         for _, row in user_df.iterrows():
             title = str(row['title']).strip()
             year = row.get('year')
@@ -142,15 +142,17 @@ if uploaded:
                     'matched_id': best_row.name
                 })
             else:
-                skipped += 1
+                skipped.append(title)
         if matched:
             new_df = pd.DataFrame(matched)
             st.session_state.watched = pd.concat([st.session_state.watched, new_df]).drop_duplicates(subset=['title'])
             save_watched_list(st.session_state.watched)
-            st.sidebar.success(f"✅ Imported {len(matched)} movies! ({skipped} skipped)")
+            st.sidebar.success(f"✅ Imported {len(matched)} movies!")
+            if skipped:
+                st.sidebar.warning(f"Skipped {len(skipped)} movies. First few: {skipped[:10]}")
             st.rerun()
         else:
-            st.sidebar.warning("No movies matched. Try Force Add for recent titles.")
+            st.sidebar.warning("No movies matched.")
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
@@ -252,7 +254,7 @@ with tab3:
     if q:
         matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=15)
         for i, (match_title, score) in enumerate(matches):
-            if score < 60: continue
+            if score < 55: continue   # Lower threshold for fuzzy search
             row = horror_df[horror_df['title'] == match_title].iloc[0]
             seen = row['title'] in st.session_state.watched['title'].values
             col1, col2 = st.columns([4, 1])
@@ -269,4 +271,4 @@ with tab3:
                         st.toast(f"Added {row['title']}!", icon="⭐")
                         st.rerun()
 
-st.sidebar.caption("Extremely lenient CSV import + Fuzzy search")
+st.sidebar.caption("Extremely lenient CSV import")
