@@ -143,7 +143,7 @@ tab1, tab2, tab3 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 Search
 with tab1:
     st.header("Your Watched Horror Movies")
     if len(st.session_state.watched) > 0:
-        # Only select columns that actually exist in the dataset
+    # Only select columns that actually exist in the dataset
 cols_to_show = ['title']
 if 'vote_average' in horror_df.columns:
     cols_to_show.append('vote_average')
