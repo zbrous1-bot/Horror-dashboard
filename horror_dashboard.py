@@ -11,7 +11,6 @@ def load_horror_data():
     df = pd.read_csv("best_horror_movies.csv")
     df = df.dropna(subset=['movie_title', 'movie_info'])
     
-    # Rename columns to make them easier to use
     df = df.rename(columns={
         'movie_title': 'title',
         'movie_info': 'overview',
@@ -20,9 +19,7 @@ def load_horror_data():
         'original_release_date': 'release_date'
     })
     
-    # Extract only the year from the date column
     df['year'] = pd.to_datetime(df['release_date'], errors='coerce').dt.year
-    
     df = df.reset_index(drop=True)
     return df
 
@@ -210,4 +207,4 @@ with tab3:
         else:
             st.info("Movie not found. Try different spelling.")
 
-st.sidebar.caption("Rotten Tomatoes dataset • Fixed year parsing")
+st.sidebar.caption("Rotten Tomatoes dataset • No posters in this file")
