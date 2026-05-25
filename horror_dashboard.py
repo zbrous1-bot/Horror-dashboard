@@ -39,6 +39,41 @@ def save_watched_list(df):
 if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
+# ====================== IMPROVED MATCHING WITH YEAR ======================
+def smart_match(title, year=None):
+    # Get top title matches
+    matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=10)
+    
+    best_match = None
+    best_score = 0
+    
+    for match_title, score in matches:
+        if score < 65:
+            continue
+        matched_row = horror_df[horror_df['title'] == match_title].iloc[0]
+        movie_year = matched_row['year']
+        
+        # Year bonus
+        year_bonus = 0
+        if year and pd.notna(movie_year):
+            year_diff = abs(int(year) - int(movie_year))
+            if year_diff == 0:
+                year_bonus = 25
+            elif year_diff <= 2:
+                year_bonus = 15
+            elif year_diff <= 5:
+                year_bonus = 8
+        
+        final_score = score + year_bonus
+        if final_score > best_score:
+            best_score = final_score
+            best_match = matched_row
+    
+    if best_match is not None and best_score >= 75:
+        return best_match
+    return None
+
+# ====================== SIDEBAR ======================
 st.sidebar.header("📥 Import from Letterboxd")
 uploaded = st.sidebar.file_uploader("Upload diary.csv", type="csv")
 
@@ -53,13 +88,19 @@ if uploaded:
             user_df['year'] = None
         if 'rating' not in user_df.columns:
             user_df['rating'] = None
+
         matched = []
         for _, row in user_df.iterrows():
             title = str(row['title']).strip()
-            match = process.extractOne(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio)
-            if match and match[1] >= 82:
-                matched_row = horror_df[horror_df['title'] == match[0]].iloc[0]
-                matched.append({'title': match[0], 'year': matched_row['year'], 'rating': row.get('rating'), 'matched_id': int(matched_row['id'])})
+            year = row.get('year')
+            best_row = smart_match(title, year)
+            if best_row is not None:
+                matched.append({
+                    'title': best_row['title'],
+                    'year': best_row['year'],
+                    'rating': row.get('rating'),
+                    'matched_id': int(best_row['id'])
+                })
         if matched:
             new_df = pd.DataFrame(matched)
             st.session_state.watched = pd.concat([st.session_state.watched, new_df]).drop_duplicates(subset=['title'])
@@ -70,15 +111,18 @@ if uploaded:
 
 st.sidebar.subheader("➕ Add Manually")
 manual = st.sidebar.text_input("Movie title")
+manual_year = st.sidebar.number_input("Year (optional)", min_value=1900, max_value=2030, value=2025, step=1)
 if st.sidebar.button("Add", use_container_width=True) and manual:
-    match = process.extractOne(manual, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio)
-    if match and match[1] >= 82:
-        matched_row = horror_df[horror_df['title'] == match[0]].iloc[0]
-        new_entry = pd.DataFrame([{'title': match[0], 'year': matched_row['year'], 'rating': None, 'matched_id': int(matched_row['id'])}])
+    best_row = smart_match(manual, manual_year)
+    if best_row is not None:
+        new_entry = pd.DataFrame([{'title': best_row['title'], 'year': best_row['year'], 'rating': None, 'matched_id': int(best_row['id'])}])
         st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
         save_watched_list(st.session_state.watched)
-        st.sidebar.success(f"Added: {match[0]}")
+        st.sidebar.success(f"Added: {best_row['title']} ({best_row['year']})")
+    else:
+        st.sidebar.error("Movie not found. Try different spelling or add the year.")
 
+# ====================== TABS ======================
 tab1, tab2, tab3 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 Search"])
 
 with tab1:
@@ -95,7 +139,7 @@ with tab1:
             save_watched_list(st.session_state.watched)
             st.rerun()
     else:
-        st.info("No movies yet. Import from Letterboxd or add manually in the sidebar.")
+        st.info("No movies yet. Import from Letterboxd or add manually.")
 
 with tab2:
     st.header("🎯 Recommendations For You")
@@ -133,22 +177,22 @@ with tab3:
     st.header("🔍 Check If You've Seen It")
     q = st.text_input("Search movie title")
     if q:
-        match = process.extractOne(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio)
-        if match and match[1] >= 70:
-            row = horror_df[horror_df['title'] == match[0]].iloc[0]
-            seen = match[0] in st.session_state.watched['title'].values
-            st.subheader(f"{match[0]} ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
+        best_row = smart_match(q)
+        if best_row is not None:
+            row = best_row
+            seen = row['title'] in st.session_state.watched['title'].values
+            st.subheader(f"{row['title']} ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
             st.write(row['overview'])
             if seen:
                 st.success("✅ You've seen this!")
             else:
                 st.warning("❌ Not in your list yet")
                 if st.button("Add to Watched", use_container_width=True):
-                    new_entry = pd.DataFrame([{'title': match[0], 'year': row['year'], 'rating': None, 'matched_id': int(row['id'])}])
+                    new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': int(row['id'])}])
                     st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
                     save_watched_list(st.session_state.watched)
                     st.rerun()
         else:
-            st.info("Movie not found in database.")
+            st.info("Movie not found. Try different spelling.")
 
-st.sidebar.caption("Mobile-friendly • Auto-saves ⭐")
+st.sidebar.caption("Year-aware matching enabled")
