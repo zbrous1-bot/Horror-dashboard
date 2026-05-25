@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import requests
-from thefuzz import process, fuzz
 import os
 
 st.set_page_config(page_title="Horror Movie Tracker", page_icon="👻", layout="centered")
@@ -38,7 +37,7 @@ def tmdb_request(endpoint, params=None):
     response = requests.get(url, headers=headers, params=params)
     return response.json() if response.status_code == 200 else None
 
-# ====================== LOAD HORROR MOVIES ======================
+# ====================== LOAD POPULAR HORROR MOVIES (for recommendations only) ======================
 @st.cache_data(ttl=3600)
 def load_horror_data():
     data = tmdb_request("/discover/movie", {
@@ -79,37 +78,20 @@ def save_watched_list(df):
 if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
-# ====================== LENIENT MATCHING ======================
-def import_match(title):
-    matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=10)
-    for match_title, score in matches:
-        if score >= 40:   # Extremely lenient
-            return horror_df[horror_df['title'] == match_title].iloc[0]
-    return None
-
-def smart_match(title, year=None):
-    matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=15)
-    best_match = None
-    best_score = 0
-    for match_title, score in matches:
-        if score < 68: continue
-        matched_row = horror_df[horror_df['title'] == match_title].iloc[0]
-        movie_year = matched_row.get('year')
-        penalty = 0
-        if "alien" in title.lower() and ("3" in match_title.lower() or "iii" in match_title.lower()):
-            penalty = 40
-        year_bonus = 0
-        if year and pd.notna(movie_year):
-            year_diff = abs(int(year) - int(movie_year))
-            if year_diff == 0: year_bonus = 35
-            elif year_diff <= 1: year_bonus = 22
-            elif year_diff <= 3: year_bonus = 12
-        final_score = score - penalty + year_bonus
-        if final_score > best_score:
-            best_score = final_score
-            best_match = matched_row
-    if best_match is not None and best_score >= 78:
-        return best_match
+# ====================== TMDB SEARCH FOR ANY MOVIE ======================
+def search_movie_on_tmdb(title):
+    """Search TMDB for a movie and return the best match"""
+    data = tmdb_request("/search/movie", {"query": title, "page": 1})
+    if data and 'results' in data and data['results']:
+        best = data['results'][0]
+        return {
+            'title': best.get('title') or best.get('original_title'),
+            'year': best.get('release_date', '')[:4] if best.get('release_date') else None,
+            'overview': best.get('overview', ''),
+            'vote_average': best.get('vote_average'),
+            'poster_path': best.get('poster_path'),
+            'id': best.get('id')
+        }
     return None
 
 # ====================== SIDEBAR ======================
@@ -130,19 +112,24 @@ if uploaded:
 
         matched = []
         skipped = []
-        for _, row in user_df.iterrows():
+        progress = st.sidebar.progress(0)
+        total = len(user_df)
+        
+        for idx, row in user_df.iterrows():
             title = str(row['title']).strip()
             year = row.get('year')
-            best_row = import_match(title)
-            if best_row is not None:
+            best = search_movie_on_tmdb(title)
+            if best is not None:
                 matched.append({
-                    'title': best_row['title'],
-                    'year': best_row['year'],
+                    'title': best['title'],
+                    'year': best.get('year'),
                     'rating': row.get('rating'),
-                    'matched_id': best_row.name
+                    'matched_id': best.get('id', 999999)
                 })
             else:
                 skipped.append(title)
+            progress.progress((idx + 1) / total)
+        
         if matched:
             new_df = pd.DataFrame(matched)
             st.session_state.watched = pd.concat([st.session_state.watched, new_df]).drop_duplicates(subset=['title'])
@@ -160,11 +147,13 @@ st.sidebar.subheader("➕ Add Manually")
 manual = st.sidebar.text_input("Movie title")
 manual_year = st.sidebar.number_input("Year (optional)", min_value=1900, max_value=2030, value=2025, step=1)
 if st.sidebar.button("Add", width='stretch') and manual:
-    best_row = smart_match(manual, manual_year)
-    if best_row is not None:
-        new_entry = pd.DataFrame([{'title': best_row['title'], 'year': best_row['year'], 'rating': None, 'matched_id': best_row.name}])
-    else:
-        new_entry = pd.DataFrame([{'title': manual, 'year': manual_year, 'rating': None, 'matched_id': 999999}])
+    # Always add what the user typed (no matching required)
+    new_entry = pd.DataFrame([{
+        'title': manual,
+        'year': manual_year,
+        'rating': None,
+        'matched_id': 999999
+    }])
     st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
     save_watched_list(st.session_state.watched)
     st.sidebar.success(f"✅ Added: {manual}")
@@ -252,23 +241,31 @@ with tab3:
     st.header("🔍 Search Movies")
     q = st.text_input("Type any movie name (fuzzy search)")
     if q:
-        matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=15)
-        for i, (match_title, score) in enumerate(matches):
-            if score < 50: continue
-            row = horror_df[horror_df['title'] == match_title].iloc[0]
-            seen = row['title'] in st.session_state.watched['title'].values
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-                st.caption(f"Match: {score}%")
-                st.write(str(row['overview'])[:220] + "..." if len(str(row['overview'])) > 220 else row['overview'])
-            with col2:
-                if not seen:
-                    if st.button("Add to Watched", key=f"search_add_{i}"):
-                        new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': row.name}])
-                        st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
-                        save_watched_list(st.session_state.watched)
-                        st.toast(f"Added {row['title']}!", icon="⭐")
-                        st.rerun()
+        # Use TMDB search for better results
+        results = tmdb_request("/search/movie", {"query": q, "page": 1})
+        if results and 'results' in results:
+            for i, movie in enumerate(results['results'][:10]):
+                row = {
+                    'title': movie.get('title') or movie.get('original_title'),
+                    'year': movie.get('release_date', '')[:4] if movie.get('release_date') else None,
+                    'overview': movie.get('overview', ''),
+                    'vote_average': movie.get('vote_average'),
+                    'poster_path': movie.get('poster_path'),
+                    'id': movie.get('id')
+                }
+                seen = row['title'] in st.session_state.watched['title'].values
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
+                    st.caption(f"TMDB Rating: {row.get('vote_average', 'N/A')}")
+                    st.write(str(row['overview'])[:220] + "..." if len(str(row['overview'])) > 220 else row['overview'])
+                with col2:
+                    if not seen:
+                        if st.button("Add to Watched", key=f"search_add_{i}"):
+                            new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': row['id']}])
+                            st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                            save_watched_list(st.session_state.watched)
+                            st.toast(f"Added {row['title']}!", icon="⭐")
+                            st.rerun()
 
-st.sidebar.caption("Extremely lenient CSV import + fuzzy search")
+st.sidebar.caption("Uses TMDB search — should import 80-100+ movies now")
