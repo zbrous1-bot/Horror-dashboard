@@ -79,11 +79,11 @@ def save_watched_list(df):
 if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
-# ====================== LENIENT MATCHING FOR CSV ======================
+# ====================== LENIENT MATCHING ======================
 def import_match(title):
-    matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=8)
+    matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=10)
     for match_title, score in matches:
-        if score >= 55:   # Very lenient
+        if score >= 50:   # Very lenient for CSV
             return horror_df[horror_df['title'] == match_title].iloc[0]
     return None
 
@@ -149,6 +149,8 @@ if uploaded:
             save_watched_list(st.session_state.watched)
             st.sidebar.success(f"✅ Imported {len(matched)} movies! ({skipped} skipped)")
             st.rerun()
+        else:
+            st.sidebar.warning("No movies matched. Try Force Add for recent titles.")
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
@@ -248,9 +250,9 @@ with tab3:
     st.header("🔍 Search Movies")
     q = st.text_input("Type any movie name (fuzzy search)")
     if q:
-        matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=12)
+        matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=15)
         for i, (match_title, score) in enumerate(matches):
-            if score < 60: continue   # Lowered threshold for better fuzzy search
+            if score < 60: continue
             row = horror_df[horror_df['title'] == match_title].iloc[0]
             seen = row['title'] in st.session_state.watched['title'].values
             col1, col2 = st.columns([4, 1])
@@ -267,4 +269,4 @@ with tab3:
                         st.toast(f"Added {row['title']}!", icon="⭐")
                         st.rerun()
 
-st.sidebar.caption("Very lenient CSV import + improved fuzzy search")
+st.sidebar.caption("Extremely lenient CSV import + Fuzzy search")
