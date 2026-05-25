@@ -11,7 +11,6 @@ def load_horror_data():
     df = pd.read_csv("best_horror_movies.csv")
     df = df.dropna(subset=['title', 'overview'])
     
-    # Safe year handling
     if 'release_year' in df.columns:
         df['year'] = df['release_year']
     elif 'year' not in df.columns:
@@ -22,7 +21,6 @@ def load_horror_data():
 
 horror_df = load_horror_data()
 
-# ====================== PERSISTENT WATCHED LIST ======================
 WATCHED_FILE = "watched_list.csv"
 
 def load_watched_list():
@@ -36,7 +34,6 @@ def save_watched_list(df):
 if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
-# ====================== SMART MATCHING ======================
 def smart_match(title, year=None):
     matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=10)
     best_match = None
@@ -142,28 +139,37 @@ with tab2:
     if len(st.session_state.watched) == 0:
         st.warning("Add some watched movies first!")
     else:
-        # Lightweight recommendations: top unseen movies sorted by rating
         watched_titles = st.session_state.watched['title'].tolist()
         recs = horror_df[~horror_df['title'].isin(watched_titles)].copy()
         
+        # Sort by rating if available, otherwise random but consistent
         if 'vote_average' in recs.columns:
             recs = recs.sort_values('vote_average', ascending=False)
         else:
-            recs = recs.sample(12)  # random if no rating column
+            recs = recs.sample(12, random_state=42)
         
         recs = recs.head(12)
         
         for _, row in recs.iterrows():
             with st.container():
+                # Poster (lightweight)
+                if 'poster_path' in row and pd.notna(row['poster_path']):
+                    poster_url = f"https://image.tmdb.org/t/p/w200{row['poster_path']}"
+                    st.image(poster_url, width=120)
+                elif 'poster' in row and pd.notna(row['poster']):
+                    st.image(row['poster'], width=120)
+                
                 st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-                st.caption(f"TMDB: {row.get('vote_average', 'N/A')}")
-                st.write(str(row['overview'])[:180] + "...")
+                st.caption(f"TMDB: {row.get('vote_average', 'N/A'):.1f}")
+                st.write(str(row['overview'])[:160] + "..." if len(str(row['overview'])) > 160 else row['overview'])
+                
                 if st.button("✅ Mark as Watched", key=f"w_{int(row['id'])}", width='stretch'):
                     new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': int(row['id'])}])
                     st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
                     save_watched_list(st.session_state.watched)
                     st.toast(f"Added {row['title']}!", icon="⭐")
                     st.rerun()
+                
                 st.link_button("🔗 TMDB", f"https://www.themoviedb.org/movie/{int(row['id'])}", width='stretch')
                 st.divider()
 
@@ -189,4 +195,4 @@ with tab3:
         else:
             st.info("Movie not found. Try different spelling.")
 
-st.sidebar.caption("Lightweight version • Stable on mobile")
+st.sidebar.caption("Lightweight + Posters")
