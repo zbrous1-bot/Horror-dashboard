@@ -116,10 +116,8 @@ with tab1:
     st.header("Your Watched Horror Movies")
     if len(st.session_state.watched) > 0:
         cols_to_show = ['title']
-        if 'vote_average' in horror_df.columns:
-            cols_to_show.append('vote_average')
-        if 'director' in horror_df.columns:
-            cols_to_show.append('director')
+        if 'vote_average' in horror_df.columns: cols_to_show.append('vote_average')
+        if 'director' in horror_df.columns: cols_to_show.append('director')
         display = st.session_state.watched.merge(horror_df[cols_to_show], on='title', how='left')
         final_cols = [c for c in ['title', 'year', 'rating', 'vote_average', 'director'] if c in display.columns]
         st.dataframe(display[final_cols], width='stretch', height=400)
@@ -137,9 +135,8 @@ with tab1:
 with tab2:
     st.header("🎯 Recommendations For You")
     
-    # Subgenre filters
     subgenre_options = ["Found Footage", "Supernatural / Possession", "Slasher", "Psychological", "Paranormal / Ghost", "Demonic"]
-    selected_subgenres = st.multiselect("Filter by subgenre (optional)", subgenre_options, default=[])
+    selected_subgenres = st.multiselect("Filter by subgenre", subgenre_options, default=[])
     
     if len(st.session_state.watched) == 0:
         st.warning("Add some watched movies first!")
@@ -147,15 +144,15 @@ with tab2:
         watched_titles = st.session_state.watched['title'].tolist()
         recs = horror_df[~horror_df['title'].isin(watched_titles)].copy()
         
-        # Apply subgenre filter if any selected
+        # Subgenre filter
         if selected_subgenres:
             keyword_map = {
-                "Found Footage": ["found footage", "handheld", "camera"],
+                "Found Footage": ["found footage", "handheld"],
                 "Supernatural / Possession": ["supernatural", "possession", "demon", "exorcism"],
-                "Slasher": ["slasher", "killer", "mask", "blood"],
-                "Psychological": ["psychological", "mind", "slow burn", "atmospheric"],
+                "Slasher": ["slasher", "killer", "blood"],
+                "Psychological": ["psychological", "slow burn"],
                 "Paranormal / Ghost": ["paranormal", "ghost", "haunted"],
-                "Demonic": ["demonic", "devil", "satan"]
+                "Demonic": ["demonic", "devil"]
             }
             mask = pd.Series(False, index=recs.index)
             for genre in selected_subgenres:
@@ -163,7 +160,7 @@ with tab2:
                     mask |= recs['overview'].str.contains(kw, case=False, na=False)
             recs = recs[mask]
         
-        # Sort and limit
+        # Sort
         if 'vote_average' in recs.columns:
             recs = recs.sort_values('vote_average', ascending=False)
         else:
@@ -173,12 +170,23 @@ with tab2:
         
         for _, row in recs.iterrows():
             with st.container():
-                # Poster
                 if 'poster_path' in row and pd.notna(row.get('poster_path')):
-                    poster_url = f"https://image.tmdb.org/t/p/w200{row['poster_path']}"
-                    st.image(poster_url, width=140)
+                    st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=140)
+                
                 st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-                st.caption(f"TMDB: {row.get('vote_average', 'N/A'):.1f}")
+                
+                # Show all available ratings
+                rating_text = f"TMDB: {row.get('vote_average', 'N/A'):.1f}"
+                if 'imdb_rating' in row and pd.notna(row['imdb_rating']):
+                    rating_text += f" | IMDb: {row['imdb_rating']:.1f}"
+                elif 'imdb_score' in row and pd.notna(row['imdb_score']):
+                    rating_text += f" | IMDb: {row['imdb_score']:.1f}"
+                if 'rotten_tomatoes' in row and pd.notna(row['rotten_tomatoes']):
+                    rating_text += f" | RT: {row['rotten_tomatoes']}%"
+                elif 'tomatometer' in row and pd.notna(row['tomatometer']):
+                    rating_text += f" | RT: {row['tomatometer']}%"
+                
+                st.caption(rating_text)
                 st.write(str(row['overview'])[:160] + "..." if len(str(row['overview'])) > 160 else row['overview'])
                 
                 if st.button("✅ Mark as Watched", key=f"w_{int(row['id'])}", width='stretch'):
@@ -213,4 +221,4 @@ with tab3:
         else:
             st.info("Movie not found. Try different spelling.")
 
-st.sidebar.caption("Subgenre filters enabled")
+st.sidebar.caption("IMDb + Rotten Tomatoes added where available")
