@@ -20,7 +20,11 @@ def load_horror_data():
     return df
 
 horror_df = load_horror_data()
-
+@st.cache_data
+def compute_similarity_matrix(features):
+    vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
+    tfidf = vectorizer.fit_transform(features)
+    return cosine_similarity(tfidf)
 # ====================== PERSISTENT WATCHED LIST ======================
 WATCHED_FILE = "watched_list.csv"
 
