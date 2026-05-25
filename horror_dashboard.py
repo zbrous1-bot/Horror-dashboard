@@ -117,23 +117,22 @@ if st.sidebar.button("Add", width='stretch') and manual:
     if best_row is not None:
         new_entry = pd.DataFrame([{'title': best_row['title'], 'year': best_row['year'], 'rating': None, 'matched_id': best_row.name}])
     else:
-        # Force add if not found in dataset
         new_entry = pd.DataFrame([{'title': manual, 'year': manual_year, 'rating': None, 'matched_id': 999999}])
     st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
     save_watched_list(st.session_state.watched)
     st.sidebar.success(f"Added: {manual}")
     st.rerun()
 
-# Force Add Any Movie (for recent films like The Nun 2)
 st.sidebar.subheader("🎬 Force Add Any Movie")
-force_title = st.sidebar.text_input("Movie title (any movie)")
-force_year = st.sidebar.number_input("Year", min_value=1900, max_value=2030, value=2023, step=1)
-if st.sidebar.button("Force Add", width='stretch') and force_title:
-    new_entry = pd.DataFrame([{'title': force_title, 'year': force_year, 'rating': None, 'matched_id': 999999}])
-    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
-    save_watched_list(st.session_state.watched)
-    st.sidebar.success(f"Force added: {force_title} ({force_year})")
-    st.rerun()
+force_title = st.sidebar.text_input("Movie title (e.g. The Nun 2)")
+force_year = st.sidebar.number_input("Year", min_value=1900, max_value=2030, value=2023, step=1, key="force_year")
+if st.sidebar.button("Force Add This Movie", key="force_add_btn", width='stretch'):
+    if force_title.strip():
+        new_entry = pd.DataFrame([{'title': force_title.strip(), 'year': force_year, 'rating': None, 'matched_id': 999999}])
+        st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+        save_watched_list(st.session_state.watched)
+        st.sidebar.success(f"✅ Force added: {force_title} ({force_year})")
+        st.rerun()
 
 # ====================== TABS ======================
 tab1, tab2, tab3 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 Search"])
@@ -218,7 +217,7 @@ with tab3:
     st.header("🔍 Search Movies")
     q = st.text_input("Type any movie name (fuzzy search)")
     if q:
-        matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=8)
+        matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=10)
         for i, (match_title, score) in enumerate(matches):
             if score < 65:
                 continue
@@ -228,6 +227,8 @@ with tab3:
             with col1:
                 st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
                 st.caption(f"Match: {score}%")
+                # ← New: Bio / Plot Summary
+                st.write(str(row['overview'])[:220] + "..." if len(str(row['overview'])) > 220 else row['overview'])
             with col2:
                 if seen:
                     st.success("Seen")
@@ -239,4 +240,4 @@ with tab3:
                         st.toast(f"Added {row['title']}!", icon="⭐")
                         st.rerun()
 
-st.sidebar.caption("Force Add enabled • Instant refresh")
+st.sidebar.caption("Bio added to search • Force Add enabled")
