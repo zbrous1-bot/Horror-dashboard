@@ -128,9 +128,7 @@ tab1, tab2, tab3 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 Search
 
 with tab1:
     st.header("Your Watched Horror Movies")
-    
     if len(st.session_state.watched) > 0:
-        # Remove duplicates button
         if st.button("🧹 Remove Duplicates", width='stretch'):
             before = len(st.session_state.watched)
             st.session_state.watched = st.session_state.watched.drop_duplicates(subset=['title'], keep='first')
@@ -138,15 +136,12 @@ with tab1:
             st.success(f"Removed {before - len(st.session_state.watched)} duplicate(s)")
             st.rerun()
         
-        # Individual delete buttons
         for i, row in st.session_state.watched.reset_index(drop=True).iterrows():
             col1, col2 = st.columns([5, 1])
             with col1:
                 st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-                if 'rating' in row and pd.notna(row['rating']):
-                    st.caption(f"Your rating: {row['rating']} ⭐")
             with col2:
-                if st.button("🗑️", key=f"del_{i}", help="Delete this movie"):
+                if st.button("🗑️", key=f"del_{i}"):
                     orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
                     st.session_state.watched = st.session_state.watched.drop(orig_idx)
                     save_watched_list(st.session_state.watched)
@@ -206,16 +201,14 @@ with tab2:
                     st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
                     save_watched_list(st.session_state.watched)
                     st.toast(f"Added {row['title']}!", icon="⭐")
-                    st.rerun()   # Instant refresh
-                
-                st.divider()
+                    st.rerun()
 
 with tab3:
     st.header("🔍 Search Movies")
-    q = st.text_input("Type any movie name (fuzzy search — no exact match needed)")
+    q = st.text_input("Type any movie name (fuzzy search)")
     if q:
         matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=8)
-        for match_title, score in matches:
+        for i, (match_title, score) in enumerate(matches):
             if score < 65:
                 continue
             row = horror_df[horror_df['title'] == match_title].iloc[0]
@@ -228,7 +221,7 @@ with tab3:
                 if seen:
                     st.success("Seen")
                 else:
-                    if st.button("Add to Watched", key=f"add_{row.name}"):
+                    if st.button("Add to Watched", key=f"search_add_{i}"):
                         new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': row.name}])
                         st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
                         save_watched_list(st.session_state.watched)
