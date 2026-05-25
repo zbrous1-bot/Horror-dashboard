@@ -136,13 +136,34 @@ with tab1:
 
 with tab2:
     st.header("🎯 Recommendations For You")
+    
+    # Subgenre filters
+    subgenre_options = ["Found Footage", "Supernatural / Possession", "Slasher", "Psychological", "Paranormal / Ghost", "Demonic"]
+    selected_subgenres = st.multiselect("Filter by subgenre (optional)", subgenre_options, default=[])
+    
     if len(st.session_state.watched) == 0:
         st.warning("Add some watched movies first!")
     else:
         watched_titles = st.session_state.watched['title'].tolist()
         recs = horror_df[~horror_df['title'].isin(watched_titles)].copy()
         
-        # Sort by rating if available, otherwise random but consistent
+        # Apply subgenre filter if any selected
+        if selected_subgenres:
+            keyword_map = {
+                "Found Footage": ["found footage", "handheld", "camera"],
+                "Supernatural / Possession": ["supernatural", "possession", "demon", "exorcism"],
+                "Slasher": ["slasher", "killer", "mask", "blood"],
+                "Psychological": ["psychological", "mind", "slow burn", "atmospheric"],
+                "Paranormal / Ghost": ["paranormal", "ghost", "haunted"],
+                "Demonic": ["demonic", "devil", "satan"]
+            }
+            mask = pd.Series(False, index=recs.index)
+            for genre in selected_subgenres:
+                for kw in keyword_map.get(genre, []):
+                    mask |= recs['overview'].str.contains(kw, case=False, na=False)
+            recs = recs[mask]
+        
+        # Sort and limit
         if 'vote_average' in recs.columns:
             recs = recs.sort_values('vote_average', ascending=False)
         else:
@@ -152,13 +173,10 @@ with tab2:
         
         for _, row in recs.iterrows():
             with st.container():
-                # Poster (lightweight)
-                if 'poster_path' in row and pd.notna(row['poster_path']):
+                # Poster
+                if 'poster_path' in row and pd.notna(row.get('poster_path')):
                     poster_url = f"https://image.tmdb.org/t/p/w200{row['poster_path']}"
-                    st.image(poster_url, width=120)
-                elif 'poster' in row and pd.notna(row['poster']):
-                    st.image(row['poster'], width=120)
-                
+                    st.image(poster_url, width=140)
                 st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
                 st.caption(f"TMDB: {row.get('vote_average', 'N/A'):.1f}")
                 st.write(str(row['overview'])[:160] + "..." if len(str(row['overview'])) > 160 else row['overview'])
@@ -195,4 +213,4 @@ with tab3:
         else:
             st.info("Movie not found. Try different spelling.")
 
-st.sidebar.caption("Lightweight + Posters")
+st.sidebar.caption("Subgenre filters enabled")
