@@ -2,11 +2,13 @@ import streamlit as st
 import pandas as pd
 import requests
 import os
+import random
+from thefuzz import process, fuzz
 
-st.set_page_config(page_title="Horror Movie Tracker", page_icon="👻", layout="centered")
-st.title("👻 Horror Dashboard")
+st.set_page_config(page_title="Horror / SciFi / Thriller Dashboard", page_icon="👻", layout="centered")
+st.title("👻 Horror / SciFi / Thriller Dashboard")
 
-# ====================== TMDB API KEY (saved permanently) ======================
+# ====================== TMDB API KEY ======================
 KEY_FILE = "tmdb_key.txt"
 
 if not os.path.exists(KEY_FILE):
@@ -37,32 +39,42 @@ def tmdb_request(endpoint, params=None):
     response = requests.get(url, headers=headers, params=params)
     return response.json() if response.status_code == 200 else None
 
-# ====================== LOAD POPULAR HORROR MOVIES (for recommendations only) ======================
+# ====================== LOAD HORROR + SCIFI + THRILLER MOVIES ======================
 @st.cache_data(ttl=3600)
-def load_horror_data():
-    data = tmdb_request("/discover/movie", {
-        "with_genres": "27",
-        "sort_by": "popularity.desc",
-        "vote_count.gte": 100,
-        "page": 1
-    })
-    if not data or 'results' not in data:
-        return pd.DataFrame()
-    movies = []
-    for m in data['results']:
-        movies.append({
-            'title': m.get('title') or m.get('original_title'),
-            'year': m.get('release_date', '')[:4] if m.get('release_date') else None,
-            'overview': m.get('overview', ''),
-            'vote_average': m.get('vote_average'),
-            'poster_path': m.get('poster_path'),
-            'id': m.get('id')
-        })
-    df = pd.DataFrame(movies)
+def load_movies():
+    genres = {
+        27: "Horror",
+        878: "SciFi",
+        53: "Thriller"
+    }
+    all_movies = []
+    
+    for genre_id, genre_name in genres.items():
+        for page in range(1, 4):
+            data = tmdb_request("/discover/movie", {
+                "with_genres": str(genre_id),
+                "sort_by": "popularity.desc",
+                "vote_count.gte": 50,
+                "page": page
+            })
+            if data and 'results' in data:
+                for m in data['results']:
+                    all_movies.append({
+                        'title': m.get('title') or m.get('original_title'),
+                        'year': m.get('release_date', '')[:4] if m.get('release_date') else None,
+                        'overview': m.get('overview', ''),
+                        'vote_average': m.get('vote_average'),
+                        'poster_path': m.get('poster_path'),
+                        'id': m.get('id'),
+                        'genre': genre_name
+                    })
+    
+    df = pd.DataFrame(all_movies)
     df = df.dropna(subset=['title'])
+    df = df.drop_duplicates(subset=['title'])
     return df
 
-horror_df = load_horror_data()
+movies_df = load_movies()
 
 # ====================== PERSISTENT WATCHED LIST ======================
 WATCHED_FILE = "watched_list.csv"
@@ -70,7 +82,7 @@ WATCHED_FILE = "watched_list.csv"
 def load_watched_list():
     if os.path.exists(WATCHED_FILE):
         return pd.read_csv(WATCHED_FILE)
-    return pd.DataFrame(columns=['title', 'year', 'rating', 'matched_id'])
+    return pd.DataFrame(columns=['title', 'year', 'rating', 'matched_id', 'genre'])
 
 def save_watched_list(df):
     df.to_csv(WATCHED_FILE, index=False)
@@ -78,9 +90,8 @@ def save_watched_list(df):
 if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
-# ====================== TMDB SEARCH FOR ANY MOVIE ======================
+# ====================== TMDB SEARCH ======================
 def search_movie_on_tmdb(title):
-    """Search TMDB for a movie and return the best match"""
     data = tmdb_request("/search/movie", {"query": title, "page": 1})
     if data and 'results' in data and data['results']:
         best = data['results'][0]
@@ -90,7 +101,8 @@ def search_movie_on_tmdb(title):
             'overview': best.get('overview', ''),
             'vote_average': best.get('vote_average'),
             'poster_path': best.get('poster_path'),
-            'id': best.get('id')
+            'id': best.get('id'),
+            'genre': 'Mixed'
         }
     return None
 
@@ -117,14 +129,14 @@ if uploaded:
         
         for idx, row in user_df.iterrows():
             title = str(row['title']).strip()
-            year = row.get('year')
             best = search_movie_on_tmdb(title)
             if best is not None:
                 matched.append({
                     'title': best['title'],
                     'year': best.get('year'),
                     'rating': row.get('rating'),
-                    'matched_id': best.get('id', 999999)
+                    'matched_id': best.get('id', 999999),
+                    'genre': best.get('genre', 'Mixed')
                 })
             else:
                 skipped.append(title)
@@ -143,27 +155,57 @@ if uploaded:
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
+# ====================== MANUAL ADD + FUZZY SEARCH ======================
 st.sidebar.subheader("➕ Add Manually")
-manual = st.sidebar.text_input("Movie title")
+
+# Regular free-text add
+manual = st.sidebar.text_input("Type movie title (free text)")
 manual_year = st.sidebar.number_input("Year (optional)", min_value=1900, max_value=2030, value=2025, step=1)
-if st.sidebar.button("Add", width='stretch') and manual:
-    # Always add what the user typed (no matching required)
+if st.sidebar.button("Add Free Text", width='stretch') and manual:
     new_entry = pd.DataFrame([{
         'title': manual,
         'year': manual_year,
         'rating': None,
-        'matched_id': 999999
+        'matched_id': 999999,
+        'genre': 'Mixed'
     }])
     st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
     save_watched_list(st.session_state.watched)
     st.sidebar.success(f"✅ Added: {manual}")
     st.rerun()
 
+# NEW: Fuzzy search suggestions
+st.sidebar.markdown("**Or use fuzzy search (recommended):**")
+search_query = st.sidebar.text_input("Start typing a movie name...", key="fuzzy_search")
+
+if search_query and len(search_query) >= 2:
+    # Fuzzy match against movies_df
+    titles = movies_df['title'].tolist()
+    matches = process.extract(search_query, titles, scorer=fuzz.token_sort_ratio, limit=5)
+    
+    st.sidebar.write("**Suggestions:**")
+    for match_title, score in matches:
+        if score >= 50:  # Only show decent matches
+            row = movies_df[movies_df['title'] == match_title].iloc[0]
+            genre_tag = f"[{row['genre']}] "
+            if st.sidebar.button(f"{genre_tag}{match_title} ({row['year']})", key=f"suggest_{match_title}"):
+                new_entry = pd.DataFrame([{
+                    'title': row['title'],
+                    'year': row['year'],
+                    'rating': None,
+                    'matched_id': row['id'],
+                    'genre': row['genre']
+                }])
+                st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                save_watched_list(st.session_state.watched)
+                st.sidebar.success(f"✅ Added: {match_title}")
+                st.rerun()
+
 # ====================== TABS ======================
 tab1, tab2, tab3 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 Search"])
 
 with tab1:
-    st.header("Your Watched Horror Movies")
+    st.header("Your Watched Movies")
     if len(st.session_state.watched) > 0:
         if st.button("🧹 Remove Duplicates", width='stretch'):
             before = len(st.session_state.watched)
@@ -175,7 +217,8 @@ with tab1:
         for i, row in st.session_state.watched.reset_index(drop=True).iterrows():
             col1, col2 = st.columns([5, 1])
             with col1:
-                st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
+                genre_tag = f"[{row.get('genre', 'Mixed')}] " if 'genre' in row else ""
+                st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
             with col2:
                 if st.button("🗑️", key=f"del_{i}"):
                     orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
@@ -187,7 +230,7 @@ with tab1:
         col1, col2 = st.columns(2)
         col1.metric("Total Seen", len(st.session_state.watched))
         if st.button("Clear All", width='stretch'):
-            st.session_state.watched = pd.DataFrame(columns=['title', 'year', 'rating', 'matched_id'])
+            st.session_state.watched = pd.DataFrame(columns=['title', 'year', 'rating', 'matched_id', 'genre'])
             save_watched_list(st.session_state.watched)
             st.rerun()
     else:
@@ -195,42 +238,76 @@ with tab1:
 
 with tab2:
     st.header("🎯 Recommendations For You")
-    subgenre_options = ["Found Footage", "Supernatural / Possession", "Slasher", "Psychological", "Paranormal / Ghost", "Demonic"]
-    selected_subgenres = st.multiselect("Filter by subgenre", subgenre_options, default=[])
     
     if len(st.session_state.watched) == 0:
         st.warning("Add some watched movies first!")
     else:
         watched_titles = st.session_state.watched['title'].tolist()
-        recs = horror_df[~horror_df['title'].isin(watched_titles)].copy()
+        recs = movies_df[~movies_df['title'].isin(watched_titles)].copy()
         
-        if selected_subgenres:
+        if len(st.session_state.watched) > 0:
+            random_watched = st.session_state.watched.sample(1).iloc[0]
+            similar_data = tmdb_request(f"/movie/{random_watched['matched_id']}/similar", {"page": 1})
+            if similar_data and 'results' in similar_data:
+                similar_movies = []
+                for m in similar_data['results'][:10]:
+                    similar_movies.append({
+                        'title': m.get('title') or m.get('original_title'),
+                        'year': m.get('release_date', '')[:4] if m.get('release_date') else None,
+                        'overview': m.get('overview', ''),
+                        'vote_average': m.get('vote_average'),
+                        'poster_path': m.get('poster_path'),
+                        'id': m.get('id'),
+                        'genre': 'Mixed'
+                    })
+                similar_df = pd.DataFrame(similar_movies)
+                recs = pd.concat([recs, similar_df]).drop_duplicates(subset=['title'])
+        
+        genre_options = ["Horror", "SciFi", "Thriller"]
+        selected_genres = st.multiselect("Filter by genre", genre_options, default=genre_options)
+        
+        if selected_genres:
+            recs = recs[recs['genre'].isin(selected_genres)]
+        
+        vibe_options = ["Found Footage", "Supernatural", "Slasher", "Psychological", "Alien / Space", "Dystopian", "Serial Killer", "Mind-Bending"]
+        selected_vibes = st.multiselect("Filter by vibe", vibe_options, default=[])
+        
+        if selected_vibes:
             keyword_map = {
                 "Found Footage": ["found footage", "handheld"],
-                "Supernatural / Possession": ["supernatural", "possession", "demon", "exorcism"],
+                "Supernatural": ["supernatural", "ghost", "haunted", "demon"],
                 "Slasher": ["slasher", "killer", "blood"],
-                "Psychological": ["psychological", "slow burn"],
-                "Paranormal / Ghost": ["paranormal", "ghost", "haunted"],
-                "Demonic": ["demonic", "devil"]
+                "Psychological": ["psychological", "slow burn", "mind"],
+                "Alien / Space": ["alien", "space", "planet", "sci-fi"],
+                "Dystopian": ["dystopian", "future", "society"],
+                "Serial Killer": ["serial", "killer", "murder"],
+                "Mind-Bending": ["mind-bending", "twist", "reality"]
             }
             mask = pd.Series(False, index=recs.index)
-            for genre in selected_subgenres:
-                for kw in keyword_map.get(genre, []):
+            for vibe in selected_vibes:
+                for kw in keyword_map.get(vibe, []):
                     mask |= recs['overview'].str.contains(kw, case=False, na=False)
             recs = recs[mask]
         
-        recs = recs.head(12)
+        recs = recs.head(15)
         
         for idx, row in recs.iterrows():
             with st.container():
                 if 'poster_path' in row and pd.notna(row.get('poster_path')):
                     st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=140)
-                st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
+                genre_tag = f"[{row.get('genre', 'Mixed')}] "
+                st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
                 st.caption(f"TMDB: {row.get('vote_average', 'N/A'):.1f}")
                 st.write(str(row['overview'])[:180] + "..." if len(str(row['overview'])) > 180 else row['overview'])
                 
                 if st.button("✅ Mark as Watched", key=f"w_{idx}", width='stretch'):
-                    new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': idx}])
+                    new_entry = pd.DataFrame([{
+                        'title': row['title'],
+                        'year': row['year'],
+                        'rating': None,
+                        'matched_id': row.get('id', 999999),
+                        'genre': row.get('genre', 'Mixed')
+                    }])
                     st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
                     save_watched_list(st.session_state.watched)
                     st.toast(f"Added {row['title']}!", icon="⭐")
@@ -241,17 +318,17 @@ with tab3:
     st.header("🔍 Search Movies")
     q = st.text_input("Type any movie name (fuzzy search)")
     if q:
-        # Use TMDB search for better results
         results = tmdb_request("/search/movie", {"query": q, "page": 1})
         if results and 'results' in results:
-            for i, movie in enumerate(results['results'][:10]):
+            for i, movie in enumerate(results['results'][:12]):
                 row = {
                     'title': movie.get('title') or movie.get('original_title'),
                     'year': movie.get('release_date', '')[:4] if movie.get('release_date') else None,
                     'overview': movie.get('overview', ''),
                     'vote_average': movie.get('vote_average'),
                     'poster_path': movie.get('poster_path'),
-                    'id': movie.get('id')
+                    'id': movie.get('id'),
+                    'genre': 'Mixed'
                 }
                 seen = row['title'] in st.session_state.watched['title'].values
                 col1, col2 = st.columns([4, 1])
@@ -262,10 +339,16 @@ with tab3:
                 with col2:
                     if not seen:
                         if st.button("Add to Watched", key=f"search_add_{i}"):
-                            new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': row['id']}])
+                            new_entry = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'rating': None,
+                                'matched_id': row['id'],
+                                'genre': 'Mixed'
+                            }])
                             st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
                             save_watched_list(st.session_state.watched)
                             st.toast(f"Added {row['title']}!", icon="⭐")
                             st.rerun()
 
-st.sidebar.caption("Uses TMDB search — should import 80-100+ movies now")
+st.sidebar.caption("Horror + SciFi + Thriller • Fuzzy search in Add Manually")
