@@ -105,6 +105,7 @@ if uploaded:
             st.session_state.watched = pd.concat([st.session_state.watched, new_df]).drop_duplicates(subset=['title'])
             save_watched_list(st.session_state.watched)
             st.sidebar.success(f"Imported {len(matched)} movies!")
+            st.rerun()
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
@@ -115,9 +116,10 @@ if st.sidebar.button("Add", width='stretch') and manual:
     best_row = smart_match(manual, manual_year)
     if best_row is not None:
         new_entry = pd.DataFrame([{'title': best_row['title'], 'year': best_row['year'], 'rating': None, 'matched_id': best_row.name}])
-        st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
+        st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
         save_watched_list(st.session_state.watched)
         st.sidebar.success(f"Added: {best_row['title']} ({best_row['year']})")
+        st.rerun()
     else:
         st.sidebar.error("Movie not found. Try different spelling or add the year.")
 
@@ -126,9 +128,31 @@ tab1, tab2, tab3 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 Search
 
 with tab1:
     st.header("Your Watched Horror Movies")
+    
     if len(st.session_state.watched) > 0:
-        display = st.session_state.watched.merge(horror_df[['title', 'year']], on='title', how='left')
-        st.dataframe(display, width='stretch', height=400)
+        # Remove duplicates button
+        if st.button("🧹 Remove Duplicates", width='stretch'):
+            before = len(st.session_state.watched)
+            st.session_state.watched = st.session_state.watched.drop_duplicates(subset=['title'], keep='first')
+            save_watched_list(st.session_state.watched)
+            st.success(f"Removed {before - len(st.session_state.watched)} duplicate(s)")
+            st.rerun()
+        
+        # Individual delete buttons
+        for i, row in st.session_state.watched.reset_index(drop=True).iterrows():
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
+                if 'rating' in row and pd.notna(row['rating']):
+                    st.caption(f"Your rating: {row['rating']} ⭐")
+            with col2:
+                if st.button("🗑️", key=f"del_{i}", help="Delete this movie"):
+                    orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
+                    st.session_state.watched = st.session_state.watched.drop(orig_idx)
+                    save_watched_list(st.session_state.watched)
+                    st.rerun()
+        
+        st.divider()
         col1, col2 = st.columns(2)
         col1.metric("Total Seen", len(st.session_state.watched))
         if st.button("Clear All", width='stretch'):
@@ -179,32 +203,36 @@ with tab2:
                 
                 if st.button("✅ Mark as Watched", key=f"w_{idx}", width='stretch'):
                     new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': idx}])
-                    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
+                    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
                     save_watched_list(st.session_state.watched)
                     st.toast(f"Added {row['title']}!", icon="⭐")
-                    st.rerun()
+                    st.rerun()   # Instant refresh
+                
                 st.divider()
 
 with tab3:
-    st.header("🔍 Check If You've Seen It")
-    q = st.text_input("Search movie title")
+    st.header("🔍 Search Movies")
+    q = st.text_input("Type any movie name (fuzzy search — no exact match needed)")
     if q:
-        best_row = smart_match(q)
-        if best_row is not None:
-            row = best_row
+        matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=8)
+        for match_title, score in matches:
+            if score < 65:
+                continue
+            row = horror_df[horror_df['title'] == match_title].iloc[0]
             seen = row['title'] in st.session_state.watched['title'].values
-            st.subheader(f"{row['title']} ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-            st.write(row['overview'])
-            if seen:
-                st.success("✅ You've seen this!")
-            else:
-                st.warning("❌ Not in your list yet")
-                if st.button("Add to Watched", width='stretch'):
-                    new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': row.name}])
-                    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
-                    save_watched_list(st.session_state.watched)
-                    st.rerun()
-        else:
-            st.info("Movie not found. Try different spelling.")
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
+                st.caption(f"Match: {score}%")
+            with col2:
+                if seen:
+                    st.success("Seen")
+                else:
+                    if st.button("Add to Watched", key=f"add_{row.name}"):
+                        new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': row.name}])
+                        st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                        save_watched_list(st.session_state.watched)
+                        st.toast(f"Added {row['title']}!", icon="⭐")
+                        st.rerun()
 
-st.sidebar.caption("Rotten Tomatoes dataset • No posters in this file")
+st.sidebar.caption("Fuzzy search • Delete duplicates • Instant refresh")
