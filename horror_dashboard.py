@@ -77,7 +77,6 @@ DISLIKED_FILE = "disliked_list.csv"
 def load_watched_list():
     if os.path.exists(WATCHED_FILE):
         df = pd.read_csv(WATCHED_FILE)
-        # Make sure poster_path column exists
         if 'poster_path' not in df.columns:
             df['poster_path'] = None
         return df
@@ -238,7 +237,7 @@ with tab1:
         
         for i, row in st.session_state.watched.reset_index(drop=True).iterrows():
             with st.container():
-                col1, col2, col3 = st.columns([1, 5, 1])
+                col1, col2, col3 = st.columns([1, 4, 2])
                 
                 with col1:
                     if pd.notna(row.get('poster_path')) and row['poster_path'] != 'None':
@@ -251,14 +250,35 @@ with tab1:
                     rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
                     st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text}")
                     if pd.notna(row.get('overview')):
-                        st.caption(str(row['overview'])[:110] + "..." if len(str(row['overview'])) > 110 else row['overview'])
+                        st.caption(str(row['overview'])[:100] + "..." if len(str(row['overview'])) > 100 else row['overview'])
                 
                 with col3:
-                    if st.button("🗑️", key=f"del_{i}"):
-                        orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
-                        st.session_state.watched = st.session_state.watched.drop(orig_idx)
-                        save_watched_list(st.session_state.watched)
-                        st.rerun()
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        if st.button("🗑️", key=f"del_{i}"):
+                            orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
+                            st.session_state.watched = st.session_state.watched.drop(orig_idx)
+                            save_watched_list(st.session_state.watched)
+                            st.rerun()
+                    with col_b:
+                        if st.button("👎 Didn't like", key=f"dislike_watched_{i}"):
+                            # Move to disliked list
+                            new_dislike = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'matched_id': row.get('matched_id', 999999),
+                                'genre': row.get('genre', 'Mixed')
+                            }])
+                            st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
+                            save_disliked_list(st.session_state.disliked)
+                            
+                            # Remove from watched
+                            orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
+                            st.session_state.watched = st.session_state.watched.drop(orig_idx)
+                            save_watched_list(st.session_state.watched)
+                            
+                            st.toast(f"Moved {row['title']} to Disliked", icon="👎")
+                            st.rerun()
                 st.divider()
         
         col1, col2 = st.columns(2)
@@ -414,4 +434,4 @@ with tab3:
                                 st.rerun()
                 st.divider()
 
-st.sidebar.caption("Posters fixed + cleaner Watched tab")
+st.sidebar.caption("Downvote from Watched tab + Disliked list")
