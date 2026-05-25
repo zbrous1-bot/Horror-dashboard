@@ -107,14 +107,14 @@ with tab1:
 with tab2:
     st.header("🎯 Personalized Recommendations")
     if len(st.session_state.watched) == 0:
-        st.warning("Add some movies first!")
+        st.warning("Add some watched movies first!")
     else:
-        sim_matrix = compute_similarity_matrix(horror_df['features'])
+        sim = compute_similarity_matrix(horror_df['features'])
         watched_titles = st.session_state.watched['title'].tolist()
         watched_idx = horror_df[horror_df['title'].isin(watched_titles)].index.tolist()
         
         if len(watched_idx) > 0:
-            scores = sim_matrix[watched_idx].mean(axis=0)
+            scores = sim[watched_idx].mean(axis=0)
             recs = horror_df.copy()
             recs['similarity'] = scores
             recs = recs[~recs['title'].isin(watched_titles)]
@@ -124,22 +124,30 @@ with tab2:
                 cols = st.columns([4, 1.4, 1.6])
                 with cols[0]:
                     st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-                    st.caption(f"Director: {row['director']} • Score: {row['vote_average']:.1f}")
+                    st.caption(f"Director: {row['director']} • TMDB: {row['vote_average']:.1f}/10")
                     st.write(str(row['overview'])[:200] + "...")
                 with cols[1]:
                     st.metric("Relevance", f"{row['similarity']:.2f}")
                 with cols[2]:
-                    st.link_button("TMDB", f"https://www.themoviedb.org/movie/{int(row['id'])}")
-                    if st.button("✅ I've seen this", key=f"btn_{row['id']}"):
-                        new_row = pd.DataFrame([{
-                            'title': row['title'],
-                            'year': row['year'],
-                            'rating': None,
-                            'matched_id': int(row['id'])
-                        }])
-                        st.session_state.watched = pd.concat([st.session_state.watched, new_row]).drop_duplicates()
-                        st.toast("Added! Recommendations updated.", icon="👻")
-                        st.rerun()
+                    st.link_button("🔗 TMDB", f"https://www.themoviedb.org/movie/{int(row['id'])}")
+                    
+                    # === NEW RATING FEATURE ===
+                    if st.button("✅ I’ve already seen this", key=f"seen_{int(row['id'])}"):
+                        rating = st.number_input(
+                            f"Rate {row['title']} (1–5 stars)", 
+                            min_value=1, max_value=5, value=4, step=1,
+                            key=f"rate_{int(row['id'])}"
+                        )
+                        if st.button("Save Rating", key=f"save_{int(row['id'])}"):
+                            new_entry = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'rating': rating,
+                                'matched_id': int(row['id'])
+                            }])
+                            st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates()
+                            st.toast(f"Added with {rating} stars! Recommendations updated.", icon="⭐")
+                            st.rerun()
                 st.divider()
 
 with tab3:
