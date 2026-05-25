@@ -7,7 +7,7 @@ import os
 st.set_page_config(page_title="Horror Movie Tracker", page_icon="👻", layout="centered")
 st.title("👻 Horror Dashboard")
 
-# ====================== TMDB API KEY (saved to file for permanence) ======================
+# ====================== TMDB API KEY (saved permanently) ======================
 KEY_FILE = "tmdb_key.txt"
 
 if not os.path.exists(KEY_FILE):
@@ -18,7 +18,7 @@ else:
 
 if not st.session_state.tmdb_key:
     st.sidebar.subheader("🔑 TMDB API Key Required")
-    key_input = st.sidebar.text_input("Paste your Read Access Token (starts with eyJ...)", type="password")
+    key_input = st.sidebar.text_input("Paste your Read Access Token", type="password")
     if st.sidebar.button("Save Key", width='stretch'):
         if key_input.strip().startswith("eyJ"):
             st.session_state.tmdb_key = key_input.strip()
@@ -79,6 +79,14 @@ def save_watched_list(df):
 if 'watched' not in st.session_state:
     st.session_state.watched = load_watched_list()
 
+# ====================== LENIENT MATCHING FOR CSV ======================
+def import_match(title):
+    matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=5)
+    for match_title, score in matches:
+        if score >= 72:   # Lenient for bulk CSV import
+            return horror_df[horror_df['title'] == match_title].iloc[0]
+    return None
+
 def smart_match(title, year=None):
     matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=15)
     best_match = None
@@ -121,10 +129,11 @@ if uploaded:
             user_df['rating'] = None
 
         matched = []
+        skipped = 0
         for _, row in user_df.iterrows():
             title = str(row['title']).strip()
             year = row.get('year')
-            best_row = smart_match(title, year)
+            best_row = import_match(title)
             if best_row is not None:
                 matched.append({
                     'title': best_row['title'],
@@ -132,11 +141,13 @@ if uploaded:
                     'rating': row.get('rating'),
                     'matched_id': best_row.name
                 })
+            else:
+                skipped += 1
         if matched:
             new_df = pd.DataFrame(matched)
             st.session_state.watched = pd.concat([st.session_state.watched, new_df]).drop_duplicates(subset=['title'])
             save_watched_list(st.session_state.watched)
-            st.sidebar.success(f"Imported {len(matched)} movies!")
+            st.sidebar.success(f"✅ Imported {len(matched)} movies! ({skipped} skipped)")
             st.rerun()
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
@@ -167,6 +178,7 @@ with tab1:
             save_watched_list(st.session_state.watched)
             st.success(f"Removed {before - len(st.session_state.watched)} duplicate(s)")
             st.rerun()
+        
         for i, row in st.session_state.watched.reset_index(drop=True).iterrows():
             col1, col2 = st.columns([5, 1])
             with col1:
@@ -177,6 +189,7 @@ with tab1:
                     st.session_state.watched = st.session_state.watched.drop(orig_idx)
                     save_watched_list(st.session_state.watched)
                     st.rerun()
+        
         st.divider()
         col1, col2 = st.columns(2)
         col1.metric("Total Seen", len(st.session_state.watched))
@@ -197,6 +210,7 @@ with tab2:
     else:
         watched_titles = st.session_state.watched['title'].tolist()
         recs = horror_df[~horror_df['title'].isin(watched_titles)].copy()
+        
         if selected_subgenres:
             keyword_map = {
                 "Found Footage": ["found footage", "handheld"],
@@ -211,7 +225,9 @@ with tab2:
                 for kw in keyword_map.get(genre, []):
                     mask |= recs['overview'].str.contains(kw, case=False, na=False)
             recs = recs[mask]
+        
         recs = recs.head(12)
+        
         for idx, row in recs.iterrows():
             with st.container():
                 if 'poster_path' in row and pd.notna(row.get('poster_path')):
@@ -219,6 +235,7 @@ with tab2:
                 st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
                 st.caption(f"TMDB: {row.get('vote_average', 'N/A'):.1f}")
                 st.write(str(row['overview'])[:180] + "..." if len(str(row['overview'])) > 180 else row['overview'])
+                
                 if st.button("✅ Mark as Watched", key=f"w_{idx}", width='stretch'):
                     new_entry = pd.DataFrame([{'title': row['title'], 'year': row['year'], 'rating': None, 'matched_id': idx}])
                     st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
@@ -250,4 +267,4 @@ with tab3:
                         st.toast(f"Added {row['title']}!", icon="⭐")
                         st.rerun()
 
-st.sidebar.caption("Key now saved permanently")
+st.sidebar.caption("Lenient CSV import + Permanent key")
