@@ -7,7 +7,7 @@ import os
 st.set_page_config(page_title="Horror Movie Tracker", page_icon="👻", layout="centered")
 st.title("👻 Horror Dashboard")
 
-# ====================== TMDB API KEY ======================
+# ====================== TMDB API KEY (saved permanently) ======================
 KEY_FILE = "tmdb_key.txt"
 
 if not os.path.exists(KEY_FILE):
@@ -83,7 +83,7 @@ if 'watched' not in st.session_state:
 def import_match(title):
     matches = process.extract(title, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=10)
     for match_title, score in matches:
-        if score >= 40:   # Extremely lenient for CSV
+        if score >= 40:   # Extremely lenient
             return horror_df[horror_df['title'] == match_title].iloc[0]
     return None
 
@@ -167,7 +167,7 @@ if st.sidebar.button("Add", width='stretch') and manual:
         new_entry = pd.DataFrame([{'title': manual, 'year': manual_year, 'rating': None, 'matched_id': 999999}])
     st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
     save_watched_list(st.session_state.watched)
-    st.sidebar.success(f"Added: {manual}")
+    st.sidebar.success(f"✅ Added: {manual}")
     st.rerun()
 
 # ====================== TABS ======================
@@ -254,7 +254,7 @@ with tab3:
     if q:
         matches = process.extract(q, horror_df['title'].tolist(), scorer=fuzz.token_sort_ratio, limit=15)
         for i, (match_title, score) in enumerate(matches):
-            if score < 55: continue   # Lower threshold for fuzzy search
+            if score < 50: continue
             row = horror_df[horror_df['title'] == match_title].iloc[0]
             seen = row['title'] in st.session_state.watched['title'].values
             col1, col2 = st.columns([4, 1])
@@ -271,4 +271,4 @@ with tab3:
                         st.toast(f"Added {row['title']}!", icon="⭐")
                         st.rerun()
 
-st.sidebar.caption("Extremely lenient CSV import")
+st.sidebar.caption("Extremely lenient CSV import + fuzzy search")
