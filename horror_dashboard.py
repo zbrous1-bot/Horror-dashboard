@@ -147,7 +147,7 @@ st.markdown("""
             <p style="margin: 5px 0 0 0; color: #8b949e;">Track • Discover • Enjoy</p>
         </div>
         <div style="text-align: right;">
-            <p style="margin: 0; color: #c9d1d9;">Welcome back, Zach!</p>
+            <p style="margin: 0; color: #c9d1d9;">Welcome back, Bradlee & Zach!</p>
         </div>
     </div>
 </div>
@@ -168,9 +168,9 @@ col1.metric("Movies Watched", len(st.session_state.watched))
 col2.metric("To Watch", len(st.session_state.to_watch))
 col3.metric("Disliked", len(st.session_state.disliked))
 
-if len(st.session_state.watched) > 0:
-    avg_rating = st.session_state.watched['rating'].mean()
-    col4.metric("Avg Rating", f"{avg_rating:.1f}" if pd.notna(avg_rating) else "N/A")
+# NEW: Loved / Disliked instead of average rating
+loved_count = len(st.session_state.watched[st.session_state.watched['rating'] == 5.0])
+col4.metric("Loved / Disliked", f"{loved_count} / {len(st.session_state.disliked)}")
 
 st.divider()
 
@@ -634,4 +634,4 @@ with tab4:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Final Clean Version")
+st.sidebar.caption("Final Version - Loved/Disliked Stats + Bradlee & Zach")
