@@ -65,7 +65,7 @@ def tmdb_request(endpoint, params=None):
     return response.json() if response.status_code == 200 else None
 
 def get_movie_details(movie_id):
-    return tmdb_request(f"/movie/{movie_id}", {"append_to_response": "credits"})
+    return tmdb_request(f"/movie/{movie_id}", {"append_to_response": "credits,external_ids"})
 
 # ====================== LOAD MOVIES ======================
 @st.cache_data(ttl=3600)
@@ -258,7 +258,6 @@ tab1, tab2, tab3, tab4 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 
 with tab1:
     st.header("Your Watched Movies")
     
-    # Search + Sort
     col1, col2 = st.columns([3, 2])
     with col1:
         search_term = st.text_input("🔍 Search watched movies", key="watched_search")
@@ -280,12 +279,9 @@ with tab1:
         filtered_watched = filtered_watched.sort_values('title', ascending=True)
 
     if len(filtered_watched) > 0:
-        # ====================== GRID LAYOUT (3 columns) ======================
         cols = st.columns(3)
-        
         for idx, (i, row) in enumerate(filtered_watched.reset_index(drop=True).iterrows()):
             col = cols[idx % 3]
-            
             with col:
                 with st.container():
                     if pd.notna(row.get('poster_path')) and row['poster_path'] != 'None':
@@ -318,10 +314,7 @@ with tab1:
                             orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
                             st.session_state.watched = st.session_state.watched.drop(orig_idx)
                             save_list(st.session_state.watched, WATCHED_FILE)
-                            
-                            st.toast(f"Moved {row['title']} to Disliked", icon="👎")
                             st.rerun()
-                    
                     st.caption("---")
         
         st.divider()
@@ -342,7 +335,9 @@ with tab2:
     else:
         watched_titles = st.session_state.watched['title'].tolist()
         disliked_titles = st.session_state.disliked['title'].tolist() if len(st.session_state.disliked) > 0 else []
-        recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles)].copy()
+        to_watch_titles = st.session_state.to_watch['title'].tolist() if len(st.session_state.to_watch) > 0 else []
+        
+        recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
         if len(st.session_state.watched) > 0:
             random_watched = st.session_state.watched.sample(1).iloc[0]
@@ -402,7 +397,7 @@ with tab2:
                 with col2:
                     genre_tag = f"[{row.get('genre', 'Mixed')}] "
                     st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-                    st.caption(f"TMDB: {row.get('vote_average', 'N/A'):.1f}")
+                    st.caption(f"TMDB Score: {row.get('vote_average', 'N/A'):.1f}")
                     st.write(str(row['overview'])[:160] + "..." if len(str(row['overview'])) > 160 else row['overview'])
                     
                     col_a, col_b, col_c = st.columns(3)
@@ -462,7 +457,10 @@ with tab2:
                                 cast = [p['name'] for p in details['credits']['cast'][:5]]
                                 st.write(f"**Top Cast:** {', '.join(cast)}")
                         
-                        st.markdown(f"[🔗 View full details on TMDB](https://www.themoviedb.org/movie/{row.get('id', 0)})")
+                        imdb_id = details.get('external_ids', {}).get('imdb_id')
+                        if imdb_id:
+                            st.markdown(f"[🔗 View on IMDB](https://www.imdb.com/title/{imdb_id}/)")
+                        st.markdown(f"[🔗 View on TMDB](https://www.themoviedb.org/movie/{row.get('id', 0)})")
                     else:
                         st.caption("Could not load additional details.")
                 
@@ -494,7 +492,7 @@ with tab3:
                             st.caption("🎬")
                     with col2:
                         st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-                        st.caption(f"TMDB: {row.get('vote_average', 'N/A')}")
+                        st.caption(f"TMDB Score: {row.get('vote_average', 'N/A')}")
                         st.write(str(row['overview'])[:180] + "..." if len(str(row['overview'])) > 180 else row['overview'])
                         
                         col_a, col_b, col_c = st.columns(3)
@@ -534,6 +532,10 @@ with tab3:
                                     if details.get('credits') and details['credits'].get('crew'):
                                         directors = [p['name'] for p in details['credits']['crew'] if p['job'] == 'Director'][:2]
                                         st.caption(f"**Director:** {', '.join(directors) if directors else 'N/A'}")
+                                    
+                                    imdb_id = details.get('external_ids', {}).get('imdb_id')
+                                    if imdb_id:
+                                        st.markdown(f"[🔗 View on IMDB](https://www.imdb.com/title/{imdb_id}/)")
                                     st.markdown(f"[🔗 View on TMDB](https://www.themoviedb.org/movie/{row['id']})")
                 st.divider()
 
@@ -581,4 +583,4 @@ with tab4:
     else:
         st.info("Your To Watch list is empty. Add movies from Recommendations!")
 
-st.sidebar.caption("Grid layout in Watched + full features")
+st.sidebar.caption("IMDB links added + To Watch removes from Recommendations")
