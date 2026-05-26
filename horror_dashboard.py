@@ -388,7 +388,7 @@ with tab2:
                 
                 with col1:
                     if pd.notna(row.get('poster_path')):
-                        st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=90)
+                        st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=120)   # ← Bigger
                     else:
                         st.caption("🎬")
                 
@@ -399,7 +399,8 @@ with tab2:
                     st.caption(f"TMDB Score: {row.get('vote_average', 'N/A'):.1f}")
                     st.write(str(row['overview'])[:160] + "..." if len(str(row['overview'])) > 160 else row['overview'])
                     
-                    col_a, col_b, col_c, col_d = st.columns(4)
+                    col_a, col_b, col_c, col_d, col_e = st.columns(5)
+                    
                     with col_a:
                         if st.button("✅ Watched", key=f"w_{row.get('id', idx)}", width='stretch'):
                             new_entry = pd.DataFrame([{
@@ -414,7 +415,23 @@ with tab2:
                             save_list(st.session_state.watched, WATCHED_FILE)
                             st.toast(f"Added {row['title']}!", icon="⭐")
                             st.rerun()
+                    
                     with col_b:
+                        if st.button("❤️ Loved it", key=f"loved_{row.get('id', idx)}", width='stretch'):
+                            new_entry = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'rating': 5.0,   # ← Auto 5-star rating
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed'),
+                                'poster_path': row.get('poster_path')
+                            }])
+                            st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.watched, WATCHED_FILE)
+                            st.toast(f"❤️ Loved {row['title']}!", icon="❤️")
+                            st.rerun()
+                    
+                    with col_c:
                         if st.button("👎 Dislike", key=f"dislike_{row.get('id', idx)}", width='stretch'):
                             new_dislike = pd.DataFrame([{
                                 'title': row['title'],
@@ -426,7 +443,8 @@ with tab2:
                             save_list(st.session_state.disliked, DISLIKED_FILE)
                             st.toast(f"Got it — won't show again", icon="👎")
                             st.rerun()
-                    with col_c:
+                    
+                    with col_d:
                         if st.button("➕ To Watch", key=f"to_watch_{row.get('id', idx)}", width='stretch'):
                             new_to_watch = pd.DataFrame([{
                                 'title': row['title'],
@@ -439,7 +457,8 @@ with tab2:
                             save_list(st.session_state.to_watch, TO_WATCH_FILE)
                             st.toast(f"Added {row['title']} to To Watch!", icon="📝")
                             st.rerun()
-                    with col_d:
+                    
+                    with col_e:
                         if st.button("👎 Watched & Disliked", key=f"watched_disliked_{row.get('id', idx)}", width='stretch'):
                             new_entry = pd.DataFrame([{
                                 'title': row['title'],
