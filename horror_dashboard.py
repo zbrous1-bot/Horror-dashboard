@@ -241,7 +241,6 @@ def get_genre_color(genre):
     return genre_colors.get(genre, "#6b7280")
 
 # ====================== RECOMMENDATIONS TAB ======================
-# ====================== RECOMMENDATIONS TAB ======================
 with tab1:
     st.header("🎯 Recommendations For You")
     
@@ -334,7 +333,7 @@ with tab1:
                             st.rerun()
                     
                     with col_b:
-                        if st.button("👎 Not Interested", key=f"dislike_{row.get('id', idx)}", width='stretch'):
+                        if st.button("👎 Not Interested", key=f"not_interested_{row.get('id', idx)}", width='stretch'):
                             new_dislike = pd.DataFrame([{
                                 'title': row['title'],
                                 'year': row['year'],
@@ -602,13 +601,13 @@ with tab4:
                     
                     col_a, col_b = st.columns(2)
                     with col_a:
-                        if st.button("🗑️ Delete", key=f"del_{i}", width='stretch'):
+                        if st.button("🗑️ Delete", key=f"del_watched_{row['title']}_{i}", width='stretch'):
                             orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
                             st.session_state.watched = st.session_state.watched.drop(orig_idx)
                             save_list(st.session_state.watched, WATCHED_FILE)
                             st.rerun()
                     with col_b:
-                        if st.button("👎 Didn't Like", key=f"dislike_{i}", width='stretch'):
+                        if st.button("👎 Didn't Like", key=f"dislike_watched_{row['title']}_{i}", width='stretch'):
                             new_dislike = pd.DataFrame([{
                                 'title': row['title'],
                                 'year': row['year'],
@@ -635,4 +634,4 @@ with tab4:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Clean Final Version - Recommendations First")
+st.sidebar.caption("Final Clean Version")
