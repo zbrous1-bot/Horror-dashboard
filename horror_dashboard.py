@@ -5,7 +5,7 @@ import os
 import random
 from thefuzz import process, fuzz
 
-st.set_page_config(page_title="Horror / SciFi / Thriller Dashboard", page_icon="👻", layout="centered")
+st.set_page_config(page_title="Horror / SciFi / Thriller Dashboard", page_icon="👻", layout="wide")
 st.title("👻 Horror / SciFi / Thriller Dashboard")
 
 # ====================== NIGHT MODE ======================
@@ -139,6 +139,42 @@ def search_movie_on_tmdb(title):
         }
     return None
 
+# ====================== PROFESSIONAL HEADER ======================
+st.markdown("""
+<div style="background: linear-gradient(90deg, #1a1a2e, #16213e); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #30363d;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h1 style="margin: 0; color: #58a6ff;">👻 Horror / SciFi / Thriller Dashboard</h1>
+            <p style="margin: 5px 0 0 0; color: #8b949e;">Track • Discover • Enjoy</p>
+        </div>
+        <div style="text-align: right;">
+            <p style="margin: 0; color: #c9d1d9;">Welcome back, Zach!</p>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ====================== GLOBAL SEARCH ======================
+col1, col2 = st.columns([4, 1])
+with col1:
+    global_search = st.text_input("🔍 Search across all movies", placeholder="Type movie name...", key="global_search")
+with col2:
+    st.write("")  # spacing
+
+# ====================== STATS ======================
+st.subheader("📊 Your Stats")
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Movies Watched", len(st.session_state.watched))
+col2.metric("To Watch", len(st.session_state.to_watch))
+col3.metric("Disliked", len(st.session_state.disliked))
+
+if len(st.session_state.watched) > 0:
+    avg_rating = st.session_state.watched['rating'].mean()
+    col4.metric("Avg Rating", f"{avg_rating:.1f}" if pd.notna(avg_rating) else "N/A")
+
+st.divider()
+
 # ====================== SIDEBAR ======================
 st.sidebar.header("📥 Import from Letterboxd")
 uploaded = st.sidebar.file_uploader("Upload diary.csv", type="csv")
@@ -183,78 +219,30 @@ if uploaded:
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
-# ====================== STATS ======================
-st.subheader("📊 Your Stats")
+# ====================== TABS WITH BADGES ======================
+watched_count = len(st.session_state.watched)
+to_watch_count = len(st.session_state.to_watch)
+disliked_count = len(st.session_state.disliked)
 
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Movies Watched", len(st.session_state.watched))
-col2.metric("To Watch", len(st.session_state.to_watch))
-col3.metric("Disliked", len(st.session_state.disliked))
+tab1, tab2, tab3, tab4 = st.tabs([
+    f"📋 Watched ({watched_count})",
+    f"🎯 Recommendations",
+    f"🔍 Search",
+    f"📝 To Watch ({to_watch_count})"
+])
 
-if len(st.session_state.watched) > 0:
-    avg_rating = st.session_state.watched['rating'].mean()
-    col4.metric("Avg Rating", f"{avg_rating:.1f}" if pd.notna(avg_rating) else "N/A")
+# ====================== GENRE COLOR MAPPING ======================
+genre_colors = {
+    "Horror": "#ff6b6b",
+    "SciFi": "#4ecdc4",
+    "Thriller": "#a855f7",
+    "Mixed": "#6b7280"
+}
 
-st.divider()
+def get_genre_color(genre):
+    return genre_colors.get(genre, "#6b7280")
 
-# ====================== SIDEBAR - MANUAL ADD ======================
-st.sidebar.subheader("➕ Add Manually")
-
-manual = st.sidebar.text_input("Type movie title (free text)")
-manual_year = st.sidebar.number_input("Year (optional)", min_value=1900, max_value=2030, value=2025, step=1)
-if st.sidebar.button("Add Free Text", width='stretch') and manual:
-    new_entry = pd.DataFrame([{
-        'title': manual,
-        'year': manual_year,
-        'rating': None,
-        'matched_id': 999999,
-        'genre': 'Mixed',
-        'poster_path': None
-    }])
-    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
-    save_list(st.session_state.watched, WATCHED_FILE)
-    st.sidebar.success(f"✅ Added: {manual}")
-    st.rerun()
-
-st.sidebar.markdown("**Or use fuzzy search:**")
-search_query = st.sidebar.text_input("Start typing a movie name...", key="fuzzy_search")
-
-if search_query and len(search_query) >= 2:
-    titles = movies_df['title'].tolist()
-    matches = process.extract(search_query, titles, scorer=fuzz.token_sort_ratio, limit=5)
-    st.sidebar.write("**Suggestions:**")
-    for match_title, score in matches:
-        if score >= 50:
-            row = movies_df[movies_df['title'] == match_title].iloc[0]
-            if st.sidebar.button(f"[{row['genre']}] {match_title} ({row['year']})", key=f"suggest_{match_title}"):
-                new_entry = pd.DataFrame([{
-                    'title': row['title'],
-                    'year': row['year'],
-                    'rating': None,
-                    'matched_id': row['id'],
-                    'genre': row['genre'],
-                    'poster_path': row['poster_path']
-                }])
-                st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
-                save_list(st.session_state.watched, WATCHED_FILE)
-                st.sidebar.success(f"✅ Added: {match_title}")
-                st.rerun()
-
-if len(st.session_state.disliked) > 0:
-    st.sidebar.subheader("👎 Disliked Movies")
-    for i, row in st.session_state.disliked.reset_index(drop=True).iterrows():
-        col1, col2 = st.sidebar.columns([4, 1])
-        with col1:
-            st.sidebar.caption(f"{row['title']} ({row['year']})")
-        with col2:
-            if st.sidebar.button("↩️", key=f"undo_{i}"):
-                st.session_state.disliked = st.session_state.disliked.drop(i)
-                save_list(st.session_state.disliked, DISLIKED_FILE)
-                st.rerun()
-
-# ====================== TABS ======================
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 Search", "📝 To Watch"])
-
+# ====================== WATCHED TAB (CARD STYLE + RESPONSIVE) ======================
 with tab1:
     st.header("Your Watched Movies")
     
@@ -279,17 +267,26 @@ with tab1:
         filtered_watched = filtered_watched.sort_values('title', ascending=True)
 
     if len(filtered_watched) > 0:
-        cols = st.columns(3)
+        # Responsive grid: 2 columns on mobile, 3 on tablet, 4 on desktop
+        cols = st.columns([1, 1, 1, 1])
+        
         for idx, (i, row) in enumerate(filtered_watched.reset_index(drop=True).iterrows()):
-            col = cols[idx % 3]
+            col = cols[idx % 4]
+            
             with col:
                 with st.container():
+                    # Card styling
+                    st.markdown(f"""
+                    <div style="background: #161b22; border-radius: 12px; padding: 12px; margin-bottom: 16px; border: 1px solid #30363d;">
+                    """, unsafe_allow_html=True)
+                    
                     if pd.notna(row.get('poster_path')) and row['poster_path'] != 'None':
                         st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=140)
                     else:
                         st.caption("🎬 No poster")
                     
-                    genre_tag = f"[{row.get('genre', 'Mixed')}] " if 'genre' in row else ""
+                    genre_color = get_genre_color(row.get('genre', 'Mixed'))
+                    genre_tag = f"<span style='color: {genre_color}; font-weight: bold;'>[{row.get('genre', 'Mixed')}]</span> "
                     rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
                     st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text}")
                     
@@ -301,7 +298,7 @@ with tab1:
                             save_list(st.session_state.watched, WATCHED_FILE)
                             st.rerun()
                     with col_b:
-                        if st.button("👎 Didn't like", key=f"dislike_{i}", width='stretch'):
+                        if st.button("👎 Didn't Like", key=f"dislike_{i}", width='stretch'):
                             new_dislike = pd.DataFrame([{
                                 'title': row['title'],
                                 'year': row['year'],
@@ -315,7 +312,8 @@ with tab1:
                             st.session_state.watched = st.session_state.watched.drop(orig_idx)
                             save_list(st.session_state.watched, WATCHED_FILE)
                             st.rerun()
-                    st.caption("---")
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
         
         st.divider()
         col1, col2 = st.columns(2)
@@ -325,8 +323,9 @@ with tab1:
             save_list(st.session_state.watched, WATCHED_FILE)
             st.rerun()
     else:
-        st.info("No movies match your search.")
+        st.info("No movies match your search. Try a different keyword!")
 
+# ====================== RECOMMENDATIONS TAB (CARD STYLE) ======================
 with tab2:
     st.header("🎯 Recommendations For You")
     
@@ -395,19 +394,63 @@ with tab2:
                         st.caption("🎬")
                 
                 with col2:
-                    genre_tag = f"[{row.get('genre', 'Mixed')}] "
+                    genre_color = get_genre_color(row.get('genre', 'Mixed'))
+                    genre_tag = f"<span style='color: {genre_color}; font-weight: bold;'>[{row.get('genre', 'Mixed')}]</span> "
                     st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
                     st.caption(f"TMDB Score: {row.get('vote_average', 'N/A'):.1f}")
                     st.write(str(row['overview'])[:160] + "..." if len(str(row['overview'])) > 160 else row['overview'])
                     
-                    # Check if movie is already watched
-                    is_watched = row['title'] in watched_titles
-                    
-                    if is_watched:
-                        # For already watched movies → show "Didn't Like" button
-                        if st.button("👎 Didn't Like", key=f"dislike_watched_{row.get('id', idx)}", width='stretch'):
-                            orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
-                            st.session_state.watched = st.session_state.watched.drop(orig_idx)
+                    col_a, col_b, col_c, col_d = st.columns(4)
+                    with col_a:
+                        if st.button("✅ Watched", key=f"w_{row.get('id', idx)}", width='stretch'):
+                            new_entry = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'rating': None,
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed'),
+                                'poster_path': row.get('poster_path')
+                            }])
+                            st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.watched, WATCHED_FILE)
+                            st.toast(f"Added {row['title']}!", icon="⭐")
+                            st.rerun()
+                    with col_b:
+                        if st.button("👎 Dislike", key=f"dislike_{row.get('id', idx)}", width='stretch'):
+                            new_dislike = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed')
+                            }])
+                            st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.disliked, DISLIKED_FILE)
+                            st.toast(f"Got it — won't show again", icon="👎")
+                            st.rerun()
+                    with col_c:
+                        if st.button("➕ To Watch", key=f"to_watch_{row.get('id', idx)}", width='stretch'):
+                            new_to_watch = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed'),
+                                'poster_path': row.get('poster_path')
+                            }])
+                            st.session_state.to_watch = pd.concat([st.session_state.to_watch, new_to_watch]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                            st.toast(f"Added {row['title']} to To Watch!", icon="📝")
+                            st.rerun()
+                    with col_d:
+                        if st.button("👎 Watched & Disliked", key=f"watched_disliked_{row.get('id', idx)}", width='stretch'):
+                            new_entry = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'rating': None,
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed'),
+                                'poster_path': row.get('poster_path')
+                            }])
+                            st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
                             save_list(st.session_state.watched, WATCHED_FILE)
                             
                             new_dislike = pd.DataFrame([{
@@ -419,80 +462,8 @@ with tab2:
                             st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
                             save_list(st.session_state.disliked, DISLIKED_FILE)
                             
-                            st.toast(f"Moved {row['title']} to Disliked", icon="👎")
+                            st.toast(f"Added {row['title']} as Watched + Disliked", icon="👎")
                             st.rerun()
-                    else:
-                        # Normal 4-button layout for unwatched movies
-                        col_a, col_b, col_c, col_d = st.columns(4)
-                        
-                        with col_a:
-                            if st.button("✅ Watched", key=f"w_{row.get('id', idx)}", width='stretch'):
-                                new_entry = pd.DataFrame([{
-                                    'title': row['title'],
-                                    'year': row['year'],
-                                    'rating': None,
-                                    'matched_id': row.get('id', 999999),
-                                    'genre': row.get('genre', 'Mixed'),
-                                    'poster_path': row.get('poster_path')
-                                }])
-                                st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
-                                save_list(st.session_state.watched, WATCHED_FILE)
-                                st.toast(f"Added {row['title']}!", icon="⭐")
-                                st.rerun()
-                        
-                        with col_b:
-                            if st.button("👎 Dislike", key=f"dislike_{row.get('id', idx)}", width='stretch'):
-                                new_dislike = pd.DataFrame([{
-                                    'title': row['title'],
-                                    'year': row['year'],
-                                    'matched_id': row.get('id', 999999),
-                                    'genre': row.get('genre', 'Mixed')
-                                }])
-                                st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
-                                save_list(st.session_state.disliked, DISLIKED_FILE)
-                                st.toast(f"Got it — won't show again", icon="👎")
-                                st.rerun()
-                        
-                        with col_c:
-                            if st.button("➕ To Watch", key=f"to_watch_{row.get('id', idx)}", width='stretch'):
-                                new_to_watch = pd.DataFrame([{
-                                    'title': row['title'],
-                                    'year': row['year'],
-                                    'matched_id': row.get('id', 999999),
-                                    'genre': row.get('genre', 'Mixed'),
-                                    'poster_path': row.get('poster_path')
-                                }])
-                                st.session_state.to_watch = pd.concat([st.session_state.to_watch, new_to_watch]).drop_duplicates(subset=['title'])
-                                save_list(st.session_state.to_watch, TO_WATCH_FILE)
-                                st.toast(f"Added {row['title']} to To Watch!", icon="📝")
-                                st.rerun()
-                        
-                        with col_d:
-                            if st.button("👎 Watched & Disliked", key=f"watched_disliked_{row.get('id', idx)}", width='stretch'):
-                                # Add to Watched
-                                new_entry = pd.DataFrame([{
-                                    'title': row['title'],
-                                    'year': row['year'],
-                                    'rating': None,
-                                    'matched_id': row.get('id', 999999),
-                                    'genre': row.get('genre', 'Mixed'),
-                                    'poster_path': row.get('poster_path')
-                                }])
-                                st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
-                                save_list(st.session_state.watched, WATCHED_FILE)
-                                
-                                # Add to Disliked
-                                new_dislike = pd.DataFrame([{
-                                    'title': row['title'],
-                                    'year': row['year'],
-                                    'matched_id': row.get('id', 999999),
-                                    'genre': row.get('genre', 'Mixed')
-                                }])
-                                st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
-                                save_list(st.session_state.disliked, DISLIKED_FILE)
-                                
-                                st.toast(f"Added {row['title']} as Watched + Disliked", icon="👎")
-                                st.rerun()
                 
                 with st.expander(f"🔍 Details for {row['title']}"):
                     details = get_movie_details(row.get('id', 0))
@@ -519,6 +490,7 @@ with tab2:
                 
                 st.divider()
 
+# ====================== SEARCH TAB ======================
 with tab3:
     st.header("🔍 Search Movies")
     q = st.text_input("Type any movie name (fuzzy search)")
@@ -592,6 +564,7 @@ with tab3:
                                     st.markdown(f"[🔗 View on TMDB](https://www.themoviedb.org/movie/{row['id']})")
                 st.divider()
 
+# ====================== TO WATCH TAB ======================
 with tab4:
     st.header("📝 To Watch List")
     
@@ -634,6 +607,6 @@ with tab4:
                             st.rerun()
                 st.divider()
     else:
-        st.info("Your To Watch list is empty. Add movies from Recommendations!")
+        st.info("Your To Watch list is empty. Add movies from Recommendations or Search!")
 
-st.sidebar.caption("IMDB links added + To Watch removes from Recommendations")
+st.sidebar.caption("Professional UI + Card Design + Color-coded Genres")
