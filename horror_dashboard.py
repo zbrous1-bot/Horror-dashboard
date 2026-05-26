@@ -404,14 +404,12 @@ with tab2:
                     is_watched = row['title'] in watched_titles
                     
                     if is_watched:
-                        # "Didn't Like" button for already watched movies
+                        # For already watched movies → show "Didn't Like" button
                         if st.button("👎 Didn't Like", key=f"dislike_watched_{row.get('id', idx)}", width='stretch'):
-                            # Remove from Watched
                             orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
                             st.session_state.watched = st.session_state.watched.drop(orig_idx)
                             save_list(st.session_state.watched, WATCHED_FILE)
                             
-                            # Add to Disliked
                             new_dislike = pd.DataFrame([{
                                 'title': row['title'],
                                 'year': row['year'],
@@ -424,8 +422,9 @@ with tab2:
                             st.toast(f"Moved {row['title']} to Disliked", icon="👎")
                             st.rerun()
                     else:
-                        # Normal buttons for unwatched movies
-                        col_a, col_b, col_c = st.columns(3)
+                        # Normal 4-button layout for unwatched movies
+                        col_a, col_b, col_c, col_d = st.columns(4)
+                        
                         with col_a:
                             if st.button("✅ Watched", key=f"w_{row.get('id', idx)}", width='stretch'):
                                 new_entry = pd.DataFrame([{
@@ -440,6 +439,7 @@ with tab2:
                                 save_list(st.session_state.watched, WATCHED_FILE)
                                 st.toast(f"Added {row['title']}!", icon="⭐")
                                 st.rerun()
+                        
                         with col_b:
                             if st.button("👎 Dislike", key=f"dislike_{row.get('id', idx)}", width='stretch'):
                                 new_dislike = pd.DataFrame([{
@@ -452,6 +452,7 @@ with tab2:
                                 save_list(st.session_state.disliked, DISLIKED_FILE)
                                 st.toast(f"Got it — won't show again", icon="👎")
                                 st.rerun()
+                        
                         with col_c:
                             if st.button("➕ To Watch", key=f"to_watch_{row.get('id', idx)}", width='stretch'):
                                 new_to_watch = pd.DataFrame([{
@@ -464,6 +465,33 @@ with tab2:
                                 st.session_state.to_watch = pd.concat([st.session_state.to_watch, new_to_watch]).drop_duplicates(subset=['title'])
                                 save_list(st.session_state.to_watch, TO_WATCH_FILE)
                                 st.toast(f"Added {row['title']} to To Watch!", icon="📝")
+                                st.rerun()
+                        
+                        with col_d:
+                            if st.button("👎 Watched & Disliked", key=f"watched_disliked_{row.get('id', idx)}", width='stretch'):
+                                # Add to Watched
+                                new_entry = pd.DataFrame([{
+                                    'title': row['title'],
+                                    'year': row['year'],
+                                    'rating': None,
+                                    'matched_id': row.get('id', 999999),
+                                    'genre': row.get('genre', 'Mixed'),
+                                    'poster_path': row.get('poster_path')
+                                }])
+                                st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                                save_list(st.session_state.watched, WATCHED_FILE)
+                                
+                                # Add to Disliked
+                                new_dislike = pd.DataFrame([{
+                                    'title': row['title'],
+                                    'year': row['year'],
+                                    'matched_id': row.get('id', 999999),
+                                    'genre': row.get('genre', 'Mixed')
+                                }])
+                                st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
+                                save_list(st.session_state.disliked, DISLIKED_FILE)
+                                
+                                st.toast(f"Added {row['title']} as Watched + Disliked", icon="👎")
                                 st.rerun()
                 
                 with st.expander(f"🔍 Details for {row['title']}"):
