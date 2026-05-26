@@ -407,7 +407,7 @@ with tab2:
                     
                     col_a, col_b, col_c = st.columns(3)
                     with col_a:
-                        if st.button("✅ Watched", key=f"w_{idx}", width='stretch'):
+                        if st.button("✅ Watched", key=f"w_{row.get('id', idx)}", width='stretch'):
                             new_entry = pd.DataFrame([{
                                 'title': row['title'],
                                 'year': row['year'],
@@ -421,7 +421,7 @@ with tab2:
                             st.toast(f"Added {row['title']}!", icon="⭐")
                             st.rerun()
                     with col_b:
-                        if st.button("👎 Not interested", key=f"dislike_{idx}", width='stretch'):
+                        if st.button("👎 Not interested", key=f"dislike_{row.get('id', idx)}", width='stretch'):
                             new_dislike = pd.DataFrame([{
                                 'title': row['title'],
                                 'year': row['year'],
@@ -433,7 +433,7 @@ with tab2:
                             st.toast(f"Got it — won't show again", icon="👎")
                             st.rerun()
                     with col_c:
-                        if st.button("➕ To Watch", key=f"to_watch_{idx}", width='stretch'):
+                        if st.button("➕ To Watch", key=f"to_watch_{row.get('id', idx)}", width='stretch'):
                             new_to_watch = pd.DataFrame([{
                                 'title': row['title'],
                                 'year': row['year'],
