@@ -285,7 +285,9 @@ with tab1:
                     genre_color = get_genre_color(row.get('genre', 'Mixed'))
                     genre_tag = f"<span style='color: {genre_color}; font-weight: bold;'>[{row.get('genre', 'Mixed')}]</span> "
                     rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
-                    st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text}")
+                    
+                    # FIXED: Added unsafe_allow_html=True
+                    st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text}", unsafe_allow_html=True)
                     
                     col_a, col_b = st.columns(2)
                     with col_a:
@@ -393,7 +395,7 @@ with tab2:
                 with col2:
                     genre_color = get_genre_color(row.get('genre', 'Mixed'))
                     genre_tag = f"<span style='color: {genre_color}; font-weight: bold;'>[{row.get('genre', 'Mixed')}]</span> "
-                    st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
+                    st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})", unsafe_allow_html=True)
                     st.caption(f"TMDB Score: {row.get('vote_average', 'N/A'):.1f}")
                     st.write(str(row['overview'])[:160] + "..." if len(str(row['overview'])) > 160 else row['overview'])
                     
