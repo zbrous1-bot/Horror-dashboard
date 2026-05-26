@@ -6,7 +6,6 @@ import random
 from thefuzz import process, fuzz
 
 st.set_page_config(page_title="Horror / SciFi / Thriller Dashboard", page_icon="👻", layout="wide")
-st.title("👻 Horror / SciFi / Thriller Dashboard")
 
 # ====================== NIGHT MODE ======================
 if 'night_mode' not in st.session_state:
@@ -159,7 +158,7 @@ col1, col2 = st.columns([4, 1])
 with col1:
     global_search = st.text_input("🔍 Search across all movies", placeholder="Type movie name...", key="global_search")
 with col2:
-    st.write("")  # spacing
+    st.write("")
 
 # ====================== STATS ======================
 st.subheader("📊 Your Stats")
@@ -242,7 +241,7 @@ genre_colors = {
 def get_genre_color(genre):
     return genre_colors.get(genre, "#6b7280")
 
-# ====================== WATCHED TAB (CARD STYLE + RESPONSIVE) ======================
+# ====================== WATCHED TAB (CARD STYLE) ======================
 with tab1:
     st.header("Your Watched Movies")
     
@@ -267,7 +266,6 @@ with tab1:
         filtered_watched = filtered_watched.sort_values('title', ascending=True)
 
     if len(filtered_watched) > 0:
-        # Responsive grid: 2 columns on mobile, 3 on tablet, 4 on desktop
         cols = st.columns([1, 1, 1, 1])
         
         for idx, (i, row) in enumerate(filtered_watched.reset_index(drop=True).iterrows()):
@@ -275,7 +273,6 @@ with tab1:
             
             with col:
                 with st.container():
-                    # Card styling
                     st.markdown(f"""
                     <div style="background: #161b22; border-radius: 12px; padding: 12px; margin-bottom: 16px; border: 1px solid #30363d;">
                     """, unsafe_allow_html=True)
@@ -325,7 +322,7 @@ with tab1:
     else:
         st.info("No movies match your search. Try a different keyword!")
 
-# ====================== RECOMMENDATIONS TAB (CARD STYLE) ======================
+# ====================== RECOMMENDATIONS TAB ======================
 with tab2:
     st.header("🎯 Recommendations For You")
     
@@ -564,25 +561,29 @@ with tab3:
                                     st.markdown(f"[🔗 View on TMDB](https://www.themoviedb.org/movie/{row['id']})")
                 st.divider()
 
-# ====================== TO WATCH TAB ======================
+# ====================== TO WATCH TAB (GRID + BIGGER THUMBNAILS) ======================
 with tab4:
     st.header("📝 To Watch List")
     
     if len(st.session_state.to_watch) > 0:
-        for i, row in st.session_state.to_watch.reset_index(drop=True).iterrows():
-            with st.container():
-                col1, col2, col3 = st.columns([1, 4, 2])
-                
-                with col1:
+        cols = st.columns([1, 1, 1, 1])
+        
+        for idx, (i, row) in enumerate(st.session_state.to_watch.reset_index(drop=True).iterrows()):
+            col = cols[idx % 4]
+            
+            with col:
+                with st.container():
+                    st.markdown(f"""
+                    <div style="background: #161b22; border-radius: 12px; padding: 12px; margin-bottom: 16px; border: 1px solid #30363d;">
+                    """, unsafe_allow_html=True)
+                    
                     if pd.notna(row.get('poster_path')):
-                        st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=70)
+                        st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=160)
                     else:
-                        st.caption("🎬")
-                
-                with col2:
+                        st.caption("🎬 No poster")
+                    
                     st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-                
-                with col3:
+                    
                     col_a, col_b = st.columns(2)
                     with col_a:
                         if st.button("✅ Watched", key=f"tw_w_{i}", width='stretch'):
@@ -605,8 +606,9 @@ with tab4:
                             st.session_state.to_watch = st.session_state.to_watch.drop(i)
                             save_list(st.session_state.to_watch, TO_WATCH_FILE)
                             st.rerun()
-                st.divider()
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.info("Your To Watch list is empty. Add movies from Recommendations or Search!")
 
-st.sidebar.caption("Professional UI + Card Design + Color-coded Genres")
+st.sidebar.caption("Fixed header + clean titles + grid To Watch")
