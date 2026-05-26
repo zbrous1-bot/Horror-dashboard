@@ -8,7 +8,7 @@ from thefuzz import process, fuzz
 st.set_page_config(page_title="Horror / SciFi / Thriller Dashboard", page_icon="👻", layout="centered")
 st.title("👻 Horror / SciFi / Thriller Dashboard")
 
-# ====================== NIGHT MODE CSS ======================
+# ====================== NIGHT MODE ======================
 if 'night_mode' not in st.session_state:
     st.session_state.night_mode = False
 
@@ -21,43 +21,15 @@ if night_mode != st.session_state.night_mode:
 if st.session_state.night_mode:
     st.markdown("""
     <style>
-        .stApp {
-            background-color: #0e1117;
-            color: #fafafa;
-        }
-        .stSidebar {
-            background-color: #161b22;
-        }
-        .stButton button {
-            background-color: #21262d;
-            color: #fafafa;
-            border: 1px solid #30363d;
-        }
-        .stButton button:hover {
-            background-color: #30363d;
-            border-color: #58a6ff;
-        }
-        .stTextInput input, .stNumberInput input {
-            background-color: #21262d;
-            color: #fafafa;
-            border: 1px solid #30363d;
-        }
-        .stSelectbox div, .stMultiSelect div {
-            background-color: #21262d;
-            color: #fafafa;
-        }
-        .stMarkdown, .stText, .stCaption {
-            color: #c9d1d9;
-        }
-        .stMetric {
-            background-color: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 8px;
-            padding: 10px;
-        }
-        hr {
-            border-color: #30363d;
-        }
+        .stApp { background-color: #0e1117; color: #fafafa; }
+        .stSidebar { background-color: #161b22; }
+        .stButton button { background-color: #21262d; color: #fafafa; border: 1px solid #30363d; }
+        .stButton button:hover { background-color: #30363d; border-color: #58a6ff; }
+        .stTextInput input, .stNumberInput input { background-color: #21262d; color: #fafafa; border: 1px solid #30363d; }
+        .stSelectbox div, .stMultiSelect div { background-color: #21262d; color: #fafafa; }
+        .stMarkdown, .stText, .stCaption { color: #c9d1d9; }
+        .stMetric { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px; }
+        hr { border-color: #30363d; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -91,6 +63,9 @@ def tmdb_request(endpoint, params=None):
     headers = {"Authorization": f"Bearer {TMDB_TOKEN}"}
     response = requests.get(url, headers=headers, params=params)
     return response.json() if response.status_code == 200 else None
+
+def get_movie_details(movie_id):
+    return tmdb_request(f"/movie/{movie_id}", {"append_to_response": "credits"})
 
 # ====================== LOAD MOVIES ======================
 @st.cache_data(ttl=3600)
@@ -265,7 +240,6 @@ if search_query and len(search_query) >= 2:
                 st.sidebar.success(f"✅ Added: {match_title}")
                 st.rerun()
 
-# Disliked movies
 if len(st.session_state.disliked) > 0:
     st.sidebar.subheader("👎 Disliked Movies")
     for i, row in st.session_state.disliked.reset_index(drop=True).iterrows():
@@ -284,6 +258,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["📋 Watched", "🎯 Recommendations", "🔍 
 with tab1:
     st.header("Your Watched Movies")
     
+    # Search + Sort
     col1, col2 = st.columns([3, 2])
     with col1:
         search_term = st.text_input("🔍 Search watched movies", key="watched_search")
@@ -305,31 +280,51 @@ with tab1:
         filtered_watched = filtered_watched.sort_values('title', ascending=True)
 
     if len(filtered_watched) > 0:
-        for i, row in filtered_watched.reset_index(drop=True).iterrows():
-            with st.container():
-                col1, col2, col3 = st.columns([1, 5, 1])
-                
-                with col1:
+        # ====================== GRID LAYOUT (3 columns) ======================
+        cols = st.columns(3)
+        
+        for idx, (i, row) in enumerate(filtered_watched.reset_index(drop=True).iterrows()):
+            col = cols[idx % 3]
+            
+            with col:
+                with st.container():
                     if pd.notna(row.get('poster_path')) and row['poster_path'] != 'None':
-                        st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=70)
+                        st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=140)
                     else:
-                        st.caption("🎬")
-                
-                with col2:
+                        st.caption("🎬 No poster")
+                    
                     genre_tag = f"[{row.get('genre', 'Mixed')}] " if 'genre' in row else ""
                     rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
                     st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text}")
-                    if pd.notna(row.get('overview')):
-                        st.caption(str(row['overview'])[:100] + "..." if len(str(row['overview'])) > 100 else row['overview'])
-                
-                with col3:
-                    if st.button("🗑️", key=f"del_{i}"):
-                        orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
-                        st.session_state.watched = st.session_state.watched.drop(orig_idx)
-                        save_list(st.session_state.watched, WATCHED_FILE)
-                        st.rerun()
-                st.divider()
+                    
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        if st.button("🗑️ Delete", key=f"del_{i}", width='stretch'):
+                            orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
+                            st.session_state.watched = st.session_state.watched.drop(orig_idx)
+                            save_list(st.session_state.watched, WATCHED_FILE)
+                            st.rerun()
+                    with col_b:
+                        if st.button("👎 Didn't like", key=f"dislike_{i}", width='stretch'):
+                            new_dislike = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'matched_id': row.get('matched_id', 999999),
+                                'genre': row.get('genre', 'Mixed')
+                            }])
+                            st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.disliked, DISLIKED_FILE)
+                            
+                            orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
+                            st.session_state.watched = st.session_state.watched.drop(orig_idx)
+                            save_list(st.session_state.watched, WATCHED_FILE)
+                            
+                            st.toast(f"Moved {row['title']} to Disliked", icon="👎")
+                            st.rerun()
+                    
+                    st.caption("---")
         
+        st.divider()
         col1, col2 = st.columns(2)
         col1.metric("Showing", len(filtered_watched))
         if st.button("Clear All Watched", width='stretch'):
@@ -410,7 +405,7 @@ with tab2:
                     st.caption(f"TMDB: {row.get('vote_average', 'N/A'):.1f}")
                     st.write(str(row['overview'])[:160] + "..." if len(str(row['overview'])) > 160 else row['overview'])
                     
-                    col_a, col_b = st.columns(2)
+                    col_a, col_b, col_c = st.columns(3)
                     with col_a:
                         if st.button("✅ Watched", key=f"w_{idx}", width='stretch'):
                             new_entry = pd.DataFrame([{
@@ -437,6 +432,40 @@ with tab2:
                             save_list(st.session_state.disliked, DISLIKED_FILE)
                             st.toast(f"Got it — won't show again", icon="👎")
                             st.rerun()
+                    with col_c:
+                        if st.button("➕ To Watch", key=f"to_watch_{idx}", width='stretch'):
+                            new_to_watch = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed'),
+                                'poster_path': row.get('poster_path')
+                            }])
+                            st.session_state.to_watch = pd.concat([st.session_state.to_watch, new_to_watch]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                            st.toast(f"Added {row['title']} to To Watch!", icon="📝")
+                            st.rerun()
+                
+                with st.expander(f"🔍 Details for {row['title']}"):
+                    details = get_movie_details(row.get('id', 0))
+                    if details:
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write(f"**Runtime:** {details.get('runtime', 'N/A')} min")
+                            st.write(f"**Genres:** {', '.join([g['name'] for g in details.get('genres', [])])}")
+                        with col2:
+                            if details.get('credits') and details['credits'].get('crew'):
+                                directors = [p['name'] for p in details['credits']['crew'] if p['job'] == 'Director'][:2]
+                                st.write(f"**Director:** {', '.join(directors) if directors else 'N/A'}")
+                            
+                            if details.get('credits') and details['credits'].get('cast'):
+                                cast = [p['name'] for p in details['credits']['cast'][:5]]
+                                st.write(f"**Top Cast:** {', '.join(cast)}")
+                        
+                        st.markdown(f"[🔗 View full details on TMDB](https://www.themoviedb.org/movie/{row.get('id', 0)})")
+                    else:
+                        st.caption("Could not load additional details.")
+                
                 st.divider()
 
 with tab3:
@@ -468,7 +497,7 @@ with tab3:
                         st.caption(f"TMDB: {row.get('vote_average', 'N/A')}")
                         st.write(str(row['overview'])[:180] + "..." if len(str(row['overview'])) > 180 else row['overview'])
                         
-                        col_a, col_b = st.columns(2)
+                        col_a, col_b, col_c = st.columns(3)
                         with col_a:
                             if not seen:
                                 if st.button("✅ Watched", key=f"search_w_{i}", width='stretch'):
@@ -497,6 +526,15 @@ with tab3:
                                 save_list(st.session_state.to_watch, TO_WATCH_FILE)
                                 st.toast(f"Added {row['title']} to To Watch!", icon="📝")
                                 st.rerun()
+                        with col_c:
+                            if st.button("🔍 Details", key=f"search_details_{i}", width='stretch'):
+                                details = get_movie_details(row['id'])
+                                if details:
+                                    st.info(f"**Runtime:** {details.get('runtime', 'N/A')} min  |  **Genres:** {', '.join([g['name'] for g in details.get('genres', [])])}")
+                                    if details.get('credits') and details['credits'].get('crew'):
+                                        directors = [p['name'] for p in details['credits']['crew'] if p['job'] == 'Director'][:2]
+                                        st.caption(f"**Director:** {', '.join(directors) if directors else 'N/A'}")
+                                    st.markdown(f"[🔗 View on TMDB](https://www.themoviedb.org/movie/{row['id']})")
                 st.divider()
 
 with tab4:
@@ -543,4 +581,4 @@ with tab4:
     else:
         st.info("Your To Watch list is empty. Add movies from Recommendations!")
 
-st.sidebar.caption("Night Mode + full feature set")
+st.sidebar.caption("Grid layout in Watched + full features")
