@@ -404,8 +404,8 @@ with tab2:
                     is_watched = row['title'] in watched_titles
                     
                     if is_watched:
-                        # Show "Disliked" button for already watched movies
-                        if st.button("👎 Disliked", key=f"dislike_watched_{row.get('id', idx)}", width='stretch'):
+                        # "Didn't Like" button for already watched movies
+                        if st.button("👎 Didn't Like", key=f"dislike_watched_{row.get('id', idx)}", width='stretch'):
                             # Remove from Watched
                             orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
                             st.session_state.watched = st.session_state.watched.drop(orig_idx)
