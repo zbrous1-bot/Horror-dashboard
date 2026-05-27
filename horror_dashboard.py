@@ -165,16 +165,16 @@ def search_movie_on_tmdb(title):
         }
     return None
 
-# ====================== PROFESSIONAL HEADER ======================
+# ====================== PROFESSIONAL HEADER (SOFTER COLOR) ======================
 st.markdown("""
-<div style="background: linear-gradient(90deg, #1a1a2e, #16213e); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #30363d;">
+<div style="background: linear-gradient(90deg, #1e293b, #334155); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #475569;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <div>
-            <h1 style="margin: 0; color: #58a6ff;">🎥 Brous Movie Dashboard</h1>
-            <p style="margin: 5px 0 0 0; color: #8b949e;">Track • Discover • Enjoy</p>
+            <h1 style="margin: 0; color: #60a5fa;">🎥 Brous Movie Dashboard</h1>
+            <p style="margin: 5px 0 0 0; color: #94a3b8;">Track • Discover • Enjoy</p>
         </div>
         <div style="text-align: right;">
-            <p style="margin: 0; color: #c9d1d9;">Welcome back, Bradlee & Zach!</p>
+            <p style="margin: 0; color: #cbd5e1;">Welcome back, Bradlee & Zach!</p>
         </div>
     </div>
 </div>
@@ -196,7 +196,7 @@ if global_search != st.session_state.global_search:
     st.session_state.global_search = global_search
     st.rerun()
 
-# ====================== STATS ======================
+# ====================== STATS (SOFTER COLOR) ======================
 st.subheader("📊 Your Stats")
 
 stats_container = st.container()
@@ -205,38 +205,38 @@ with stats_container:
     
     with col1:
         st.markdown("""
-        <div style="background: #161b22; padding: 20px; border-radius: 12px; border: 1px solid #30363d; text-align: center;">
+        <div style="background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #475569; text-align: center;">
             <div style="font-size: 32px; margin-bottom: 8px;">🎬</div>
-            <div style="font-size: 28px; font-weight: bold; color: #58a6ff;">{}</div>
-            <div style="color: #8b949e; font-size: 14px;">Movies Watched</div>
+            <div style="font-size: 28px; font-weight: bold; color: #60a5fa;">{}</div>
+            <div style="color: #94a3b8; font-size: 14px;">Movies Watched</div>
         </div>
         """.format(len(st.session_state.watched)), unsafe_allow_html=True)
     
     with col2:
         st.markdown("""
-        <div style="background: #161b22; padding: 20px; border-radius: 12px; border: 1px solid #30363d; text-align: center;">
+        <div style="background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #475569; text-align: center;">
             <div style="font-size: 32px; margin-bottom: 8px;">📝</div>
-            <div style="font-size: 28px; font-weight: bold; color: #58a6ff;">{}</div>
-            <div style="color: #8b949e; font-size: 14px;">To Watch</div>
+            <div style="font-size: 28px; font-weight: bold; color: #60a5fa;">{}</div>
+            <div style="color: #94a3b8; font-size: 14px;">To Watch</div>
         </div>
         """.format(len(st.session_state.to_watch)), unsafe_allow_html=True)
     
     with col3:
         st.markdown("""
-        <div style="background: #161b22; padding: 20px; border-radius: 12px; border: 1px solid #30363d; text-align: center;">
+        <div style="background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #475569; text-align: center;">
             <div style="font-size: 32px; margin-bottom: 8px;">👎</div>
-            <div style="font-size: 28px; font-weight: bold; color: #ff6b6b;">{}</div>
-            <div style="color: #8b949e; font-size: 14px;">Disliked</div>
+            <div style="font-size: 28px; font-weight: bold; color: #f87171;">{}</div>
+            <div style="color: #94a3b8; font-size: 14px;">Disliked</div>
         </div>
         """.format(len(st.session_state.disliked)), unsafe_allow_html=True)
     
     with col4:
         loved_count = len(st.session_state.watched[st.session_state.watched['rating'] == 5.0])
         st.markdown("""
-        <div style="background: #161b22; padding: 20px; border-radius: 12px; border: 1px solid #30363d; text-align: center;">
+        <div style="background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #475569; text-align: center;">
             <div style="font-size: 32px; margin-bottom: 8px;">❤️</div>
-            <div style="font-size: 28px; font-weight: bold; color: #ff6b6b;">{}</div>
-            <div style="color: #8b949e; font-size: 14px;">Loved / Disliked</div>
+            <div style="font-size: 28px; font-weight: bold; color: #f87171;">{}</div>
+            <div style="color: #94a3b8; font-size: 14px;">Loved / Disliked</div>
         </div>
         """.format(f"{loved_count} / {len(st.session_state.disliked)}"), unsafe_allow_html=True)
 
@@ -350,7 +350,6 @@ with tab1:
                 similar_df = pd.DataFrame(similar_movies)
                 recs = pd.concat([recs, similar_df]).drop_duplicates(subset=['title'])
         
-        # EXPANDED VIBE FILTER (22 options)
         vibe_options = [
             "Found Footage", "Supernatural", "Slasher", "Psychological", 
             "Alien / Space", "Dystopian", "Serial Killer", "Mind-Bending",
@@ -518,7 +517,7 @@ with tab2:
             with col:
                 with st.container():
                     st.markdown(f"""
-                    <div style="background: #161b22; border-radius: 12px; padding: 12px; margin-bottom: 16px; border: 1px solid #30363d;">
+                    <div style="background: #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 16px; border: 1px solid #475569;">
                     """, unsafe_allow_html=True)
                     
                     if pd.notna(row.get('poster_path')):
@@ -608,7 +607,7 @@ with tab3:
             with col:
                 with st.container():
                     st.markdown(f"""
-                    <div style="background: #161b22; border-radius: 12px; padding: 12px; margin-bottom: 16px; border: 1px solid #30363d;">
+                    <div style="background: #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 16px; border: 1px solid #475569;">
                     """, unsafe_allow_html=True)
                     
                     if pd.notna(row.get('poster_path')) and row['poster_path'] != 'None':
@@ -658,4 +657,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Added Funny + Action Vibes")
+st.sidebar.caption("Softer Colors - Easier on Eyes")
