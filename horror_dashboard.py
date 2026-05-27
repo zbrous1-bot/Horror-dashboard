@@ -82,10 +82,9 @@ def tmdb_request(endpoint, params=None):
 def get_movie_details(movie_id):
     return tmdb_request(f"/movie/{movie_id}", {"append_to_response": "credits,external_ids"})
 
-# ====================== LOAD MOVIES (EXPANDED GENRES) ======================
+# ====================== LOAD MOVIES (EXPANDED) ======================
 @st.cache_data(ttl=3600)
 def load_movies():
-    # Expanded to include more genres for better variety
     genres = {
         27: "Horror", 
         878: "SciFi", 
@@ -100,7 +99,7 @@ def load_movies():
     }
     all_movies = []
     for genre_id, genre_name in genres.items():
-        for page in range(1, 5):  # Increased to 5 pages per genre for more variety
+        for page in range(1, 5):
             data = tmdb_request("/discover/movie", {
                 "with_genres": str(genre_id),
                 "sort_by": "popularity.desc",
@@ -182,6 +181,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ====================== LIVE GLOBAL SEARCH (INSTANT - NO ENTER) ======================
+def update_search():
+    st.session_state.global_search = st.session_state.global_search_input
+
 if 'global_search' not in st.session_state:
     st.session_state.global_search = ""
 
@@ -190,12 +192,9 @@ global_search = st.text_input(
     value=st.session_state.global_search,
     key="global_search_input",
     placeholder="Type instantly - no Enter needed",
-    label_visibility="collapsed"
+    label_visibility="collapsed",
+    on_change=update_search
 )
-
-if global_search != st.session_state.global_search:
-    st.session_state.global_search = global_search
-    st.rerun()
 
 # ====================== STATS ======================
 st.subheader("📊 Your Stats")
@@ -329,7 +328,7 @@ with tab1:
         
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
-        # LIVE SEARCH - Updates instantly as you type
+        # LIVE SEARCH - Updates instantly
         if st.session_state.global_search:
             recs = recs[recs['title'].str.contains(st.session_state.global_search, case=False, na=False)]
             st.caption(f"🔍 Showing results for: **{st.session_state.global_search}** ({len(recs)} found)")
@@ -636,4 +635,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Expanded Genres + Instant Search")
+st.sidebar.caption("Instant Search - No Enter Needed")
