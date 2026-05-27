@@ -5,7 +5,7 @@ import os
 import random
 from thefuzz import process, fuzz
 
-st.set_page_config(page_title="Horror / SciFi / Thriller Dashboard", page_icon="👻", layout="wide")
+st.set_page_config(page_title="Brous Movie Dashboard", page_icon="🎥", layout="wide")
 
 # ====================== NIGHT MODE ======================
 if 'night_mode' not in st.session_state:
@@ -143,7 +143,7 @@ st.markdown("""
 <div style="background: linear-gradient(90deg, #1a1a2e, #16213e); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #30363d;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <div>
-            <h1 style="margin: 0; color: #58a6ff;">👻 Horror / SciFi / Thriller Dashboard</h1>
+            <h1 style="margin: 0; color: #58a6ff;">🎥 Brous Movie Dashboard</h1>
             <p style="margin: 5px 0 0 0; color: #8b949e;">Track • Discover • Enjoy</p>
         </div>
         <div style="text-align: right;">
@@ -153,8 +153,13 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ====================== GLOBAL SEARCH (LIVE - UPDATES AS YOU TYPE) ======================
-global_search = st.text_input("🔍 Search recommendations", placeholder="Start typing to filter...", key="global_search")
+# ====================== GLOBAL SEARCH (LIVE) ======================
+global_search = st.text_input(
+    "🔍 Search recommendations", 
+    placeholder="Start typing to filter instantly...", 
+    key="global_search",
+    label_visibility="collapsed"
+)
 
 # ====================== STATS ======================
 st.subheader("📊 Your Stats")
@@ -213,7 +218,7 @@ if uploaded:
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
-# ====================== TABS (NEW ORDER - SEARCH REMOVED) ======================
+# ====================== TABS ======================
 watched_count = len(st.session_state.watched)
 to_watch_count = len(st.session_state.to_watch)
 
@@ -234,7 +239,7 @@ genre_colors = {
 def get_genre_color(genre):
     return genre_colors.get(genre, "#6b7280")
 
-# ====================== RECOMMENDATIONS TAB (WITH LIVE SEARCH) ======================
+# ====================== RECOMMENDATIONS TAB ======================
 with tab1:
     st.header("🎯 Recommendations For You")
     
@@ -247,7 +252,6 @@ with tab1:
         
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
-        # LIVE SEARCH FILTER
         if global_search:
             recs = recs[recs['title'].str.contains(global_search, case=False, na=False)]
         
@@ -558,4 +562,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Search Tab Removed + Live Search")
+st.sidebar.caption("Brous Movie Dashboard - Final Version")
