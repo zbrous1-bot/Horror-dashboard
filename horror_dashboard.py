@@ -180,10 +180,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ====================== LIVE GLOBAL SEARCH (INSTANT - NO ENTER) ======================
-def update_search():
-    st.session_state.global_search = st.session_state.global_search_input
-
+# ====================== LIVE GLOBAL SEARCH (BEST POSSIBLE) ======================
 if 'global_search' not in st.session_state:
     st.session_state.global_search = ""
 
@@ -192,9 +189,13 @@ global_search = st.text_input(
     value=st.session_state.global_search,
     key="global_search_input",
     placeholder="Type instantly - no Enter needed",
-    label_visibility="collapsed",
-    on_change=update_search
+    label_visibility="collapsed"
 )
+
+# Force update
+if global_search != st.session_state.global_search:
+    st.session_state.global_search = global_search
+    st.rerun()
 
 # ====================== STATS ======================
 st.subheader("📊 Your Stats")
@@ -328,7 +329,7 @@ with tab1:
         
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
-        # LIVE SEARCH - Updates instantly
+        # LIVE SEARCH
         if st.session_state.global_search:
             recs = recs[recs['title'].str.contains(st.session_state.global_search, case=False, na=False)]
             st.caption(f"🔍 Showing results for: **{st.session_state.global_search}** ({len(recs)} found)")
@@ -635,4 +636,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Instant Search - No Enter Needed")
+st.sidebar.caption("Best possible live search")
