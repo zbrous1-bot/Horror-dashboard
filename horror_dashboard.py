@@ -574,7 +574,7 @@ with tab2:
     else:
         st.info("Your To Watch list is empty. Add movies from Recommendations!")
 
-# ====================== WATCHED TAB (WITH LOVED/DISLIKED TAGS) ======================
+# ====================== WATCHED TAB (ONLY DELETE BUTTON) ======================
 with tab3:
     st.header("📋 Watched Movies")
     
@@ -633,28 +633,12 @@ with tab3:
                     rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
                     st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text} {tag}", unsafe_allow_html=True)
                     
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        if st.button("🗑️ Delete", key=f"del_watched_{row['title']}_{i}", width='stretch'):
-                            orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
-                            st.session_state.watched = st.session_state.watched.drop(orig_idx)
-                            save_list(st.session_state.watched, WATCHED_FILE)
-                            st.rerun()
-                    with col_b:
-                        if st.button("👎 Didn't Like", key=f"dislike_watched_{row['title']}_{i}", width='stretch'):
-                            new_dislike = pd.DataFrame([{
-                                'title': row['title'],
-                                'year': row['year'],
-                                'matched_id': row.get('matched_id', 999999),
-                                'genre': row.get('genre', 'Mixed')
-                            }])
-                            st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
-                            save_list(st.session_state.disliked, DISLIKED_FILE)
-                            
-                            orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
-                            st.session_state.watched = st.session_state.watched.drop(orig_idx)
-                            save_list(st.session_state.watched, WATCHED_FILE)
-                            st.rerun()
+                    # Only Delete button now
+                    if st.button("🗑️ Delete", key=f"del_watched_{row['title']}_{i}", width='stretch'):
+                        orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
+                        st.session_state.watched = st.session_state.watched.drop(orig_idx)
+                        save_list(st.session_state.watched, WATCHED_FILE)
+                        st.rerun()
                     
                     st.markdown("</div>", unsafe_allow_html=True)
         
@@ -668,4 +652,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Loved/Disliked Tags in Watched")
+st.sidebar.caption("Removed 'Didn't Like' Button from Watched")
