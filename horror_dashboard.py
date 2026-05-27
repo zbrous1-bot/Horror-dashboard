@@ -82,17 +82,29 @@ def tmdb_request(endpoint, params=None):
 def get_movie_details(movie_id):
     return tmdb_request(f"/movie/{movie_id}", {"append_to_response": "credits,external_ids"})
 
-# ====================== LOAD MOVIES ======================
+# ====================== LOAD MOVIES (EXPANDED GENRES) ======================
 @st.cache_data(ttl=3600)
 def load_movies():
-    genres = {27: "Horror", 878: "SciFi", 53: "Thriller"}
+    # Expanded to include more genres for better variety
+    genres = {
+        27: "Horror", 
+        878: "SciFi", 
+        53: "Thriller",
+        28: "Action",
+        12: "Adventure",
+        9648: "Mystery",
+        14: "Fantasy",
+        80: "Crime",
+        18: "Drama",
+        35: "Comedy"
+    }
     all_movies = []
     for genre_id, genre_name in genres.items():
-        for page in range(1, 4):
+        for page in range(1, 5):  # Increased to 5 pages per genre for more variety
             data = tmdb_request("/discover/movie", {
                 "with_genres": str(genre_id),
                 "sort_by": "popularity.desc",
-                "vote_count.gte": 50,
+                "vote_count.gte": 30,
                 "page": page
             })
             if data and 'results' in data:
@@ -169,7 +181,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ====================== LIVE GLOBAL SEARCH (NO ENTER NEEDED) ======================
+# ====================== LIVE GLOBAL SEARCH (INSTANT - NO ENTER) ======================
 if 'global_search' not in st.session_state:
     st.session_state.global_search = ""
 
@@ -181,7 +193,6 @@ global_search = st.text_input(
     label_visibility="collapsed"
 )
 
-# Force update on every keystroke
 if global_search != st.session_state.global_search:
     st.session_state.global_search = global_search
     st.rerun()
@@ -292,6 +303,13 @@ genre_colors = {
     "Horror": "#ff6b6b",
     "SciFi": "#4ecdc4",
     "Thriller": "#a855f7",
+    "Action": "#f97316",
+    "Adventure": "#eab308",
+    "Mystery": "#8b5cf6",
+    "Fantasy": "#ec4899",
+    "Crime": "#ef4444",
+    "Drama": "#06b6d4",
+    "Comedy": "#22c55e",
     "Mixed": "#6b7280"
 }
 
@@ -311,7 +329,7 @@ with tab1:
         
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
-        # LIVE SEARCH - Updates instantly
+        # LIVE SEARCH - Updates instantly as you type
         if st.session_state.global_search:
             recs = recs[recs['title'].str.contains(st.session_state.global_search, case=False, na=False)]
             st.caption(f"🔍 Showing results for: **{st.session_state.global_search}** ({len(recs)} found)")
@@ -618,4 +636,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Search now updates instantly as you type")
+st.sidebar.caption("Expanded Genres + Instant Search")
