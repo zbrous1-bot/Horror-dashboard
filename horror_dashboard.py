@@ -30,7 +30,6 @@ if st.session_state.night_mode:
         .stMetric { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px; }
         hr { border-color: #30363d; }
         
-        /* BIGGER TAB FONT */
         .stTabs [data-baseweb="tab-list"] button {
             font-size: 18px !important;
             font-weight: 600 !important;
@@ -41,7 +40,6 @@ if st.session_state.night_mode:
 else:
     st.markdown("""
     <style>
-        /* BIGGER TAB FONT */
         .stTabs [data-baseweb="tab-list"] button {
             font-size: 18px !important;
             font-weight: 600 !important;
@@ -171,13 +169,22 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ====================== GLOBAL SEARCH ======================
+# ====================== LIVE GLOBAL SEARCH (NO ENTER NEEDED) ======================
+if 'global_search' not in st.session_state:
+    st.session_state.global_search = ""
+
 global_search = st.text_input(
     "🔍 Search recommendations", 
-    placeholder="Type to filter instantly...", 
-    key="global_search",
+    value=st.session_state.global_search,
+    key="global_search_input",
+    placeholder="Type instantly - no Enter needed",
     label_visibility="collapsed"
 )
+
+# Force update on every keystroke
+if global_search != st.session_state.global_search:
+    st.session_state.global_search = global_search
+    st.rerun()
 
 # ====================== STATS ======================
 st.subheader("📊 Your Stats")
@@ -269,7 +276,7 @@ if uploaded:
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
-# ====================== DEFINE COUNTS FIRST (FIXED) ======================
+# ====================== COUNTS ======================
 watched_count = len(st.session_state.watched)
 to_watch_count = len(st.session_state.to_watch)
 
@@ -304,9 +311,10 @@ with tab1:
         
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
-        if global_search:
-            recs = recs[recs['title'].str.contains(global_search, case=False, na=False)]
-            st.caption(f"🔍 Showing results for: **{global_search}** ({len(recs)} found)")
+        # LIVE SEARCH - Updates instantly
+        if st.session_state.global_search:
+            recs = recs[recs['title'].str.contains(st.session_state.global_search, case=False, na=False)]
+            st.caption(f"🔍 Showing results for: **{st.session_state.global_search}** ({len(recs)} found)")
         
         if len(st.session_state.watched) > 0:
             random_watched = st.session_state.watched.sample(1).iloc[0]
@@ -326,13 +334,8 @@ with tab1:
                 similar_df = pd.DataFrame(similar_movies)
                 recs = pd.concat([recs, similar_df]).drop_duplicates(subset=['title'])
         
-        genre_options = ["Horror", "SciFi", "Thriller"]
-        selected_genres = st.multiselect("Filter by genre", genre_options, default=genre_options)
-        if selected_genres:
-            recs = recs[recs['genre'].isin(selected_genres)]
-        
         vibe_options = ["Found Footage", "Supernatural", "Slasher", "Psychological", "Alien / Space", "Dystopian", "Serial Killer", "Mind-Bending"]
-        selected_vibes = st.multiselect("Filter by vibe", vibe_options, default=[])
+        selected_vibes = st.multiselect("Filter by vibe (updates instantly)", vibe_options, default=[], key="vibe_filter")
         
         if selected_vibes:
             keyword_map = {
@@ -615,4 +618,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Search Tab Removed + Fixed Counts")
+st.sidebar.caption("Search now updates instantly as you type")
