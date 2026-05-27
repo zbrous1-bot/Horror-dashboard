@@ -179,7 +179,7 @@ global_search = st.text_input(
     label_visibility="collapsed"
 )
 
-# ====================== STATS (MORE APPEALING) ======================
+# ====================== STATS ======================
 st.subheader("📊 Your Stats")
 
 stats_container = st.container()
@@ -268,6 +268,10 @@ if uploaded:
             st.rerun()
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
+
+# ====================== DEFINE COUNTS FIRST (FIXED) ======================
+watched_count = len(st.session_state.watched)
+to_watch_count = len(st.session_state.to_watch)
 
 # ====================== TABS ======================
 tab1, tab2, tab3 = st.tabs([
@@ -611,4 +615,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Improved Stats + Bigger Tab Fonts")
+st.sidebar.caption("Search Tab Removed + Fixed Counts")
