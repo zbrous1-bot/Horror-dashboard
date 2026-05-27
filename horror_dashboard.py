@@ -29,6 +29,24 @@ if st.session_state.night_mode:
         .stMarkdown, .stText, .stCaption { color: #c9d1d9; }
         .stMetric { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px; }
         hr { border-color: #30363d; }
+        
+        /* BIGGER TAB FONT */
+        .stTabs [data-baseweb="tab-list"] button {
+            font-size: 18px !important;
+            font-weight: 600 !important;
+            padding: 12px 24px !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <style>
+        /* BIGGER TAB FONT */
+        .stTabs [data-baseweb="tab-list"] button {
+            font-size: 18px !important;
+            font-weight: 600 !important;
+            padding: 12px 24px !important;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -153,24 +171,57 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ====================== GLOBAL SEARCH (LIVE - NO ENTER NEEDED) ======================
+# ====================== GLOBAL SEARCH ======================
 global_search = st.text_input(
     "🔍 Search recommendations", 
-    placeholder="Type instantly - no Enter needed", 
+    placeholder="Type to filter instantly...", 
     key="global_search",
     label_visibility="collapsed"
 )
 
-# ====================== STATS ======================
+# ====================== STATS (MORE APPEALING) ======================
 st.subheader("📊 Your Stats")
 
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Movies Watched", len(st.session_state.watched))
-col2.metric("To Watch", len(st.session_state.to_watch))
-col3.metric("Disliked", len(st.session_state.disliked))
-
-loved_count = len(st.session_state.watched[st.session_state.watched['rating'] == 5.0])
-col4.metric("Loved / Disliked", f"{loved_count} / {len(st.session_state.disliked)}")
+stats_container = st.container()
+with stats_container:
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("""
+        <div style="background: #161b22; padding: 20px; border-radius: 12px; border: 1px solid #30363d; text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 8px;">🎬</div>
+            <div style="font-size: 28px; font-weight: bold; color: #58a6ff;">{}</div>
+            <div style="color: #8b949e; font-size: 14px;">Movies Watched</div>
+        </div>
+        """.format(len(st.session_state.watched)), unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div style="background: #161b22; padding: 20px; border-radius: 12px; border: 1px solid #30363d; text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 8px;">📝</div>
+            <div style="font-size: 28px; font-weight: bold; color: #58a6ff;">{}</div>
+            <div style="color: #8b949e; font-size: 14px;">To Watch</div>
+        </div>
+        """.format(len(st.session_state.to_watch)), unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div style="background: #161b22; padding: 20px; border-radius: 12px; border: 1px solid #30363d; text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 8px;">👎</div>
+            <div style="font-size: 28px; font-weight: bold; color: #ff6b6b;">{}</div>
+            <div style="color: #8b949e; font-size: 14px;">Disliked</div>
+        </div>
+        """.format(len(st.session_state.disliked)), unsafe_allow_html=True)
+    
+    with col4:
+        loved_count = len(st.session_state.watched[st.session_state.watched['rating'] == 5.0])
+        st.markdown("""
+        <div style="background: #161b22; padding: 20px; border-radius: 12px; border: 1px solid #30363d; text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 8px;">❤️</div>
+            <div style="font-size: 28px; font-weight: bold; color: #ff6b6b;">{}</div>
+            <div style="color: #8b949e; font-size: 14px;">Loved / Disliked</div>
+        </div>
+        """.format(f"{loved_count} / {len(st.session_state.disliked)}"), unsafe_allow_html=True)
 
 st.divider()
 
@@ -219,9 +270,6 @@ if uploaded:
         st.sidebar.error(f"Error: {e}")
 
 # ====================== TABS ======================
-watched_count = len(st.session_state.watched)
-to_watch_count = len(st.session_state.to_watch)
-
 tab1, tab2, tab3 = st.tabs([
     "🎯 Recommendations",
     f"📝 To Watch ({to_watch_count})",
@@ -239,7 +287,7 @@ genre_colors = {
 def get_genre_color(genre):
     return genre_colors.get(genre, "#6b7280")
 
-# ====================== RECOMMENDATIONS TAB (LIVE SEARCH) ======================
+# ====================== RECOMMENDATIONS TAB ======================
 with tab1:
     st.header("🎯 Recommendations For You")
     
@@ -252,9 +300,9 @@ with tab1:
         
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
-        # LIVE SEARCH - Updates instantly
         if global_search:
             recs = recs[recs['title'].str.contains(global_search, case=False, na=False)]
+            st.caption(f"🔍 Showing results for: **{global_search}** ({len(recs)} found)")
         
         if len(st.session_state.watched) > 0:
             random_watched = st.session_state.watched.sample(1).iloc[0]
@@ -563,4 +611,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Instant Live Search - No Enter Needed")
+st.sidebar.caption("Improved Stats + Bigger Tab Fonts")
