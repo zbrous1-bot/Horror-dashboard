@@ -165,7 +165,7 @@ def search_movie_on_tmdb(title):
         }
     return None
 
-# ====================== PROFESSIONAL HEADER (SOFTER COLOR) ======================
+# ====================== PROFESSIONAL HEADER ======================
 st.markdown("""
 <div style="background: linear-gradient(90deg, #1e293b, #334155); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #475569;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -196,7 +196,7 @@ if global_search != st.session_state.global_search:
     st.session_state.global_search = global_search
     st.rerun()
 
-# ====================== STATS (SOFTER COLOR) ======================
+# ====================== STATS ======================
 st.subheader("📊 Your Stats")
 
 stats_container = st.container()
@@ -574,7 +574,7 @@ with tab2:
     else:
         st.info("Your To Watch list is empty. Add movies from Recommendations!")
 
-# ====================== WATCHED TAB ======================
+# ====================== WATCHED TAB (WITH LOVED/DISLIKED TAGS) ======================
 with tab3:
     st.header("📋 Watched Movies")
     
@@ -615,12 +615,23 @@ with tab3:
                     else:
                         st.caption("🎬 No poster")
                     
+                    # Determine tag
+                    is_disliked = row['title'] in st.session_state.disliked['title'].values
+                    is_loved = pd.notna(row.get('rating')) and row['rating'] == 5.0
+                    
+                    if is_loved:
+                        tag = "❤️ <span style='color:#f87171; font-weight:bold;'>Loved</span>"
+                    elif is_disliked:
+                        tag = "👎 <span style='color:#f87171; font-weight:bold;'>Disliked</span>"
+                    else:
+                        tag = ""
+                    
                     display_genre = row.get('genre', '') if row.get('genre') and row.get('genre') != 'Mixed' else ""
                     genre_color = get_genre_color(row.get('genre', 'Mixed'))
                     genre_tag = f"<span style='color: {genre_color}; font-weight: bold;'>[{display_genre}]</span> " if display_genre else ""
                     
                     rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
-                    st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text}", unsafe_allow_html=True)
+                    st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text} {tag}", unsafe_allow_html=True)
                     
                     col_a, col_b = st.columns(2)
                     with col_a:
@@ -657,4 +668,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Softer Colors - Easier on Eyes")
+st.sidebar.caption("Loved/Disliked Tags in Watched")
