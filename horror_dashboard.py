@@ -153,12 +153,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ====================== GLOBAL SEARCH ======================
-col1, col2 = st.columns([4, 1])
-with col1:
-    global_search = st.text_input("🔍 Search across all movies", placeholder="Type movie name...", key="global_search")
-with col2:
-    st.write("")
+# ====================== GLOBAL SEARCH (LIVE - UPDATES AS YOU TYPE) ======================
+global_search = st.text_input("🔍 Search recommendations", placeholder="Start typing to filter...", key="global_search")
 
 # ====================== STATS ======================
 st.subheader("📊 Your Stats")
@@ -168,7 +164,6 @@ col1.metric("Movies Watched", len(st.session_state.watched))
 col2.metric("To Watch", len(st.session_state.to_watch))
 col3.metric("Disliked", len(st.session_state.disliked))
 
-# NEW: Loved / Disliked instead of average rating
 loved_count = len(st.session_state.watched[st.session_state.watched['rating'] == 5.0])
 col4.metric("Loved / Disliked", f"{loved_count} / {len(st.session_state.disliked)}")
 
@@ -218,14 +213,13 @@ if uploaded:
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
-# ====================== TABS (NEW ORDER) ======================
+# ====================== TABS (NEW ORDER - SEARCH REMOVED) ======================
 watched_count = len(st.session_state.watched)
 to_watch_count = len(st.session_state.to_watch)
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3 = st.tabs([
     "🎯 Recommendations",
     f"📝 To Watch ({to_watch_count})",
-    "🔍 Search",
     f"📋 Watched ({watched_count})"
 ])
 
@@ -240,7 +234,7 @@ genre_colors = {
 def get_genre_color(genre):
     return genre_colors.get(genre, "#6b7280")
 
-# ====================== RECOMMENDATIONS TAB ======================
+# ====================== RECOMMENDATIONS TAB (WITH LIVE SEARCH) ======================
 with tab1:
     st.header("🎯 Recommendations For You")
     
@@ -252,6 +246,10 @@ with tab1:
         to_watch_titles = st.session_state.to_watch['title'].tolist() if len(st.session_state.to_watch) > 0 else []
         
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
+        
+        # LIVE SEARCH FILTER
+        if global_search:
+            recs = recs[recs['title'].str.contains(global_search, case=False, na=False)]
         
         if len(st.session_state.watched) > 0:
             random_watched = st.session_state.watched.sample(1).iloc[0]
@@ -479,82 +477,8 @@ with tab2:
     else:
         st.info("Your To Watch list is empty. Add movies from Recommendations!")
 
-# ====================== SEARCH TAB ======================
+# ====================== WATCHED TAB ======================
 with tab3:
-    st.header("🔍 Search Movies")
-    q = st.text_input("Type any movie name (fuzzy search)")
-    if q:
-        results = tmdb_request("/search/movie", {"query": q, "page": 1})
-        if results and 'results' in results:
-            for i, movie in enumerate(results['results'][:12]):
-                row = {
-                    'title': movie.get('title') or movie.get('original_title'),
-                    'year': movie.get('release_date', '')[:4] if movie.get('release_date') else None,
-                    'overview': movie.get('overview', ''),
-                    'vote_average': movie.get('vote_average'),
-                    'poster_path': movie.get('poster_path'),
-                    'id': movie.get('id'),
-                    'genre': 'Mixed'
-                }
-                seen = row['title'] in st.session_state.watched['title'].values
-                with st.container():
-                    col1, col2 = st.columns([1, 5])
-                    with col1:
-                        if pd.notna(row.get('poster_path')):
-                            st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=90)
-                        else:
-                            st.caption("🎬")
-                    with col2:
-                        st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
-                        st.caption(f"TMDB Score: {row.get('vote_average', 'N/A')}")
-                        st.write(str(row['overview'])[:180] + "..." if len(str(row['overview'])) > 180 else row['overview'])
-                        
-                        col_a, col_b, col_c = st.columns(3)
-                        with col_a:
-                            if not seen:
-                                if st.button("✅ Watched", key=f"search_w_{i}", width='stretch'):
-                                    new_entry = pd.DataFrame([{
-                                        'title': row['title'],
-                                        'year': row['year'],
-                                        'rating': None,
-                                        'matched_id': row['id'],
-                                        'genre': 'Mixed',
-                                        'poster_path': row['poster_path']
-                                    }])
-                                    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
-                                    save_list(st.session_state.watched, WATCHED_FILE)
-                                    st.toast(f"Added {row['title']}!", icon="⭐")
-                                    st.rerun()
-                        with col_b:
-                            if st.button("➕ To Watch", key=f"search_tw_{i}", width='stretch'):
-                                new_to_watch = pd.DataFrame([{
-                                    'title': row['title'],
-                                    'year': row['year'],
-                                    'matched_id': row['id'],
-                                    'genre': 'Mixed',
-                                    'poster_path': row['poster_path']
-                                }])
-                                st.session_state.to_watch = pd.concat([st.session_state.to_watch, new_to_watch]).drop_duplicates(subset=['title'])
-                                save_list(st.session_state.to_watch, TO_WATCH_FILE)
-                                st.toast(f"Added {row['title']} to To Watch!", icon="📝")
-                                st.rerun()
-                        with col_c:
-                            if st.button("🔍 Details", key=f"search_details_{i}", width='stretch'):
-                                details = get_movie_details(row['id'])
-                                if details:
-                                    st.info(f"**Runtime:** {details.get('runtime', 'N/A')} min  |  **Genres:** {', '.join([g['name'] for g in details.get('genres', [])])}")
-                                    if details.get('credits') and details['credits'].get('crew'):
-                                        directors = [p['name'] for p in details['credits']['crew'] if p['job'] == 'Director'][:2]
-                                        st.caption(f"**Director:** {', '.join(directors) if directors else 'N/A'}")
-                                    
-                                    imdb_id = details.get('external_ids', {}).get('imdb_id')
-                                    if imdb_id:
-                                        st.markdown(f"[🔗 View on IMDB](https://www.imdb.com/title/{imdb_id}/)")
-                                    st.markdown(f"[🔗 View on TMDB](https://www.themoviedb.org/movie/{row['id']})")
-                st.divider()
-
-# ====================== WATCHED TAB (LAST + SMALLER THUMBNAILS) ======================
-with tab4:
     st.header("📋 Watched Movies")
     
     col1, col2 = st.columns([3, 2])
@@ -634,4 +558,4 @@ with tab4:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Final Version - Loved/Disliked Stats + Bradlee & Zach")
+st.sidebar.caption("Search Tab Removed + Live Search")
