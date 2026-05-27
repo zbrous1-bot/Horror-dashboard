@@ -180,7 +180,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ====================== LIVE GLOBAL SEARCH (BEST POSSIBLE) ======================
+# ====================== LIVE GLOBAL SEARCH ======================
 if 'global_search' not in st.session_state:
     st.session_state.global_search = ""
 
@@ -192,7 +192,6 @@ global_search = st.text_input(
     label_visibility="collapsed"
 )
 
-# Force update
 if global_search != st.session_state.global_search:
     st.session_state.global_search = global_search
     st.rerun()
@@ -329,7 +328,6 @@ with tab1:
         
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
-        # LIVE SEARCH
         if st.session_state.global_search:
             recs = recs[recs['title'].str.contains(st.session_state.global_search, case=False, na=False)]
             st.caption(f"🔍 Showing results for: **{st.session_state.global_search}** ({len(recs)} found)")
@@ -352,7 +350,15 @@ with tab1:
                 similar_df = pd.DataFrame(similar_movies)
                 recs = pd.concat([recs, similar_df]).drop_duplicates(subset=['title'])
         
-        vibe_options = ["Found Footage", "Supernatural", "Slasher", "Psychological", "Alien / Space", "Dystopian", "Serial Killer", "Mind-Bending"]
+        # EXPANDED VIBE FILTER (22 options)
+        vibe_options = [
+            "Found Footage", "Supernatural", "Slasher", "Psychological", 
+            "Alien / Space", "Dystopian", "Serial Killer", "Mind-Bending",
+            "Gore", "Jump Scare", "Slow Burn", "Body Horror", 
+            "Cosmic Horror", "Zombie", "Vampire", "Post-Apocalyptic",
+            "Time Travel", "AI / Robot", "Survival", "Folk Horror",
+            "Funny", "Action"
+        ]
         selected_vibes = st.multiselect("Filter by vibe (updates instantly)", vibe_options, default=[], key="vibe_filter")
         
         if selected_vibes:
@@ -364,7 +370,21 @@ with tab1:
                 "Alien / Space": ["alien", "space", "planet", "sci-fi"],
                 "Dystopian": ["dystopian", "future", "society"],
                 "Serial Killer": ["serial", "killer", "murder"],
-                "Mind-Bending": ["mind-bending", "twist", "reality"]
+                "Mind-Bending": ["mind-bending", "twist", "reality"],
+                "Gore": ["gore", "blood", "graphic"],
+                "Jump Scare": ["jump scare", "sudden"],
+                "Slow Burn": ["slow burn", "atmospheric"],
+                "Body Horror": ["body horror", "transformation"],
+                "Cosmic Horror": ["cosmic", "lovecraft", "eldritch"],
+                "Zombie": ["zombie", "undead"],
+                "Vampire": ["vampire", "dracula"],
+                "Post-Apocalyptic": ["post-apocalyptic", "wasteland"],
+                "Time Travel": ["time travel", "time loop"],
+                "AI / Robot": ["ai", "robot", "artificial"],
+                "Survival": ["survival", "stranded"],
+                "Folk Horror": ["folk", "cult", "rural"],
+                "Funny": ["funny", "comedy", "humor", "laugh", "hilarious"],
+                "Action": ["action", "fight", "chase", "explosion", "shootout", "intense"]
             }
             mask = pd.Series(False, index=recs.index)
             for vibe in selected_vibes:
@@ -596,8 +616,10 @@ with tab3:
                     else:
                         st.caption("🎬 No poster")
                     
+                    display_genre = row.get('genre', '') if row.get('genre') and row.get('genre') != 'Mixed' else ""
                     genre_color = get_genre_color(row.get('genre', 'Mixed'))
-                    genre_tag = f"<span style='color: {genre_color}; font-weight: bold;'>[{row.get('genre', 'Mixed')}]</span> "
+                    genre_tag = f"<span style='color: {genre_color}; font-weight: bold;'>[{display_genre}]</span> " if display_genre else ""
+                    
                     rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
                     st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text}", unsafe_allow_html=True)
                     
@@ -636,4 +658,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Best possible live search")
+st.sidebar.caption("Added Funny + Action Vibes")
