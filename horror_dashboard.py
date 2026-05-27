@@ -153,10 +153,10 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ====================== GLOBAL SEARCH (LIVE) ======================
+# ====================== GLOBAL SEARCH (LIVE - NO ENTER NEEDED) ======================
 global_search = st.text_input(
     "🔍 Search recommendations", 
-    placeholder="Start typing to filter instantly...", 
+    placeholder="Type instantly - no Enter needed", 
     key="global_search",
     label_visibility="collapsed"
 )
@@ -239,7 +239,7 @@ genre_colors = {
 def get_genre_color(genre):
     return genre_colors.get(genre, "#6b7280")
 
-# ====================== RECOMMENDATIONS TAB ======================
+# ====================== RECOMMENDATIONS TAB (LIVE SEARCH) ======================
 with tab1:
     st.header("🎯 Recommendations For You")
     
@@ -252,6 +252,7 @@ with tab1:
         
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
+        # LIVE SEARCH - Updates instantly
         if global_search:
             recs = recs[recs['title'].str.contains(global_search, case=False, na=False)]
         
@@ -562,4 +563,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Brous Movie Dashboard - Final Version")
+st.sidebar.caption("Instant Live Search - No Enter Needed")
