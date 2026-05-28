@@ -149,22 +149,19 @@ st.sidebar.subheader("💾 Backup & Restore")
 
 if st.sidebar.button("📥 Download Watched"):
     if len(st.session_state.watched) > 0:
-        csv = st.session_state.watched.to_csv(index=False)
-        st.download_button("Download watched_list.csv", csv, "watched_list.csv", "text/csv")
+        st.download_button("Download watched_list.csv", st.session_state.watched.to_csv(index=False), "watched_list.csv", "text/csv")
     else:
         st.sidebar.warning("Nothing to download")
 
 if st.sidebar.button("📥 Download To Watch"):
     if len(st.session_state.to_watch) > 0:
-        csv = st.session_state.to_watch.to_csv(index=False)
-        st.download_button("Download to_watch_list.csv", csv, "to_watch_list.csv", "text/csv")
+        st.download_button("Download to_watch_list.csv", st.session_state.to_watch.to_csv(index=False), "to_watch_list.csv", "text/csv")
     else:
         st.sidebar.warning("Nothing to download")
 
 if st.sidebar.button("📥 Download Disliked"):
     if len(st.session_state.disliked) > 0:
-        csv = st.session_state.disliked.to_csv(index=False)
-        st.download_button("Download disliked_list.csv", csv, "disliked_list.csv", "text/csv")
+        st.download_button("Download disliked_list.csv", st.session_state.disliked.to_csv(index=False), "disliked_list.csv", "text/csv")
     else:
         st.sidebar.warning("Nothing to download")
 
@@ -191,11 +188,17 @@ if up_d:
     st.sidebar.success("✅ Disliked restored!")
     st.rerun()
 
-# ====================== FILE STATUS ======================
+# ====================== FILE STATUS + CLEANUP ======================
 st.sidebar.subheader("📁 Current Data")
 st.sidebar.write(f"**Watched:** {len(st.session_state.get('watched', []))} movies")
 st.sidebar.write(f"**To Watch:** {len(st.session_state.get('to_watch', []))} movies")
 st.sidebar.write(f"**Disliked:** {len(st.session_state.get('disliked', []))} movies")
+
+if st.sidebar.button("🧹 Clean Disliked List (remove watched movies)"):
+    st.session_state.disliked = st.session_state.disliked[~st.session_state.disliked['title'].isin(st.session_state.watched['title'].tolist())]
+    save_list(st.session_state.disliked, DISLIKED_FILE)
+    st.sidebar.success("✅ Cleaned! Disliked list updated.")
+    st.rerun()
 
 if st.sidebar.button("🔄 Reload from Files"):
     st.session_state.watched = load_list(WATCHED_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
@@ -328,16 +331,15 @@ if uploaded:
         for idx, row in user_df.iterrows():
             title = str(row['title']).strip()
             if title in current_titles:
-                continue  # Skip if already in watched
+                continue
 
             best = search_movie_on_tmdb(title)
             if best is not None:
                 rating = row.get('rating')
-                # Fix: Only set rating=5.0 if Letterboxd gave 5 stars
                 if pd.notna(rating) and float(rating) == 5.0:
                     rating = 5.0
                 else:
-                    rating = None  # Don't mark as loved unless exactly 5
+                    rating = None
 
                 new_movies.append({
                     'title': best['title'],
@@ -354,12 +356,17 @@ if uploaded:
             new_df = pd.DataFrame(new_movies)
             st.session_state.watched = pd.concat([st.session_state.watched, new_df]).drop_duplicates(subset=['title'])
             save_list(st.session_state.watched, WATCHED_FILE)
+            
+            # NEW: Remove from disliked if re-imported
+            st.session_state.disliked = st.session_state.disliked[~st.session_state.disliked['title'].isin([m['title'] for m in new_movies])]
+            save_list(st.session_state.disliked, DISLIKED_FILE)
+            
             st.sidebar.success(f"✅ Added {len(new_movies)} new movies!")
             if skipped:
-                st.sidebar.warning(f"Skipped {len(skipped)} movies (not found)")
+                st.sidebar.warning(f"Skipped {len(skipped)} movies")
             st.rerun()
         else:
-            st.sidebar.info("No new movies to add (all already in your list)")
+            st.sidebar.info("No new movies to add")
 
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
@@ -728,4 +735,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Fixed import bug - Loved tags now preserved")
+st.sidebar.caption("Added automatic + manual cleanup for Disliked list")
