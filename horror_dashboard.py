@@ -339,12 +339,11 @@ if uploaded:
 watched_count = len(st.session_state.watched)
 to_watch_count = len(st.session_state.to_watch)
 
-# ====================== TABS ======================
-tab1, tab2, tab3, tab4 = st.tabs([
+# ====================== TABS (Back to 3) ======================
+tab1, tab2, tab3 = st.tabs([
     "🎯 Recommendations",
     f"📝 To Watch ({to_watch_count})",
-    f"📋 Watched ({watched_count})",
-    "🖼️ Poster Wall"
+    f"📋 Watched ({watched_count})"
 ])
 
 # ====================== GENRE COLOR MAPPING ======================
@@ -425,7 +424,6 @@ with tab1:
                                    "Action / Thrilling", "Cozy / Atmospheric", "Mind-bending"])
         
         if st.button("🎲 Find My Perfect Movie", width='stretch'):
-            # Simple logic to pick a movie
             filtered = movies_df.copy()
             
             if "Horror" in mood_choice:
@@ -488,12 +486,191 @@ with tab1:
     
     st.divider()
     
-    # Normal recommendations below
+    # ====================== REGULAR RECOMMENDATIONS FEED (ALWAYS SHOWN) ======================
     if len(st.session_state.watched) == 0:
         st.warning("Add some watched movies first!")
     else:
-        # ... (rest of normal recommendations code remains the same as before)
-        pass  # Keeping it short - the main new features are above
+        watched_titles = st.session_state.watched['title'].tolist()
+        disliked_titles = st.session_state.disliked['title'].tolist() if len(st.session_state.disliked) > 0 else []
+        to_watch_titles = st.session_state.to_watch['title'].tolist() if len(st.session_state.to_watch) > 0 else []
+        
+        recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
+        
+        if st.session_state.global_search:
+            recs = recs[recs['title'].str.contains(st.session_state.global_search, case=False, na=False)]
+            st.caption(f"🔍 Showing results for: **{st.session_state.global_search}** ({len(recs)} found)")
+        
+        if len(st.session_state.watched) > 0:
+            random_watched = st.session_state.watched.sample(1).iloc[0]
+            similar_data = tmdb_request(f"/movie/{random_watched['matched_id']}/similar", {"page": 1})
+            if similar_data and 'results' in similar_data:
+                similar_movies = []
+                for m in similar_data['results'][:10]:
+                    similar_movies.append({
+                        'title': m.get('title') or m.get('original_title'),
+                        'year': m.get('release_date', '')[:4] if m.get('release_date') else None,
+                        'overview': m.get('overview', ''),
+                        'vote_average': m.get('vote_average'),
+                        'poster_path': m.get('poster_path'),
+                        'id': m.get('id'),
+                        'genre': 'Mixed'
+                    })
+                similar_df = pd.DataFrame(similar_movies)
+                recs = pd.concat([recs, similar_df]).drop_duplicates(subset=['title'])
+        
+        vibe_options = [
+            "Found Footage", "Supernatural", "Slasher", "Psychological", 
+            "Alien / Space", "Dystopian", "Serial Killer", "Mind-Bending",
+            "Gore", "Jump Scare", "Slow Burn", "Body Horror", 
+            "Cosmic Horror", "Zombie", "Vampire", "Post-Apocalyptic",
+            "Time Travel", "AI / Robot", "Survival", "Folk Horror",
+            "Funny", "Action"
+        ]
+        selected_vibes = st.multiselect("Filter by vibe (updates instantly)", vibe_options, default=[], key="vibe_filter")
+        
+        if selected_vibes:
+            keyword_map = {
+                "Found Footage": ["found footage", "handheld"],
+                "Supernatural": ["supernatural", "ghost", "haunted", "demon"],
+                "Slasher": ["slasher", "killer", "blood"],
+                "Psychological": ["psychological", "slow burn", "mind"],
+                "Alien / Space": ["alien", "space", "planet", "sci-fi"],
+                "Dystopian": ["dystopian", "future", "society"],
+                "Serial Killer": ["serial", "killer", "murder"],
+                "Mind-Bending": ["mind-bending", "twist", "reality"],
+                "Gore": ["gore", "blood", "graphic"],
+                "Jump Scare": ["jump scare", "sudden"],
+                "Slow Burn": ["slow burn", "atmospheric"],
+                "Body Horror": ["body horror", "transformation"],
+                "Cosmic Horror": ["cosmic", "lovecraft", "eldritch"],
+                "Zombie": ["zombie", "undead"],
+                "Vampire": ["vampire", "dracula"],
+                "Post-Apocalyptic": ["post-apocalyptic", "wasteland"],
+                "Time Travel": ["time travel", "time loop"],
+                "AI / Robot": ["ai", "robot", "artificial"],
+                "Survival": ["survival", "stranded"],
+                "Folk Horror": ["folk", "cult", "rural"],
+                "Funny": ["funny", "comedy", "humor", "laugh", "hilarious"],
+                "Action": ["action", "fight", "chase", "explosion", "shootout", "intense"]
+            }
+            mask = pd.Series(False, index=recs.index)
+            for vibe in selected_vibes:
+                for kw in keyword_map.get(vibe, []):
+                    mask |= recs['overview'].str.contains(kw, case=False, na=False)
+            recs = recs[mask]
+        
+        recs = recs.head(15)
+        
+        for idx, row in recs.iterrows():
+            with st.container():
+                col1, col2 = st.columns([1, 5])
+                
+                with col1:
+                    if pd.notna(row.get('poster_path')):
+                        st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=120)
+                    else:
+                        st.caption("🎬")
+                
+                with col2:
+                    genre_color = get_genre_color(row.get('genre', 'Mixed'))
+                    genre_tag = f"<span style='color: {genre_color}; font-weight: bold;'>[{row.get('genre', 'Mixed')}]</span> "
+                    st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})", unsafe_allow_html=True)
+                    st.caption(f"TMDB Score: {row.get('vote_average', 'N/A'):.1f}")
+                    st.write(str(row['overview'])[:160] + "..." if len(str(row['overview'])) > 160 else row['overview'])
+                    
+                    col_a, col_b, col_c, col_d = st.columns(4)
+                    
+                    with col_a:
+                        if st.button("❤️ Loved it", key=f"loved_{row.get('id', idx)}", width='stretch'):
+                            new_entry = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'rating': 5.0,
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed'),
+                                'poster_path': row.get('poster_path')
+                            }])
+                            st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.watched, WATCHED_FILE)
+                            st.toast(f"❤️ Loved {row['title']}!", icon="❤️")
+                            st.rerun()
+                    
+                    with col_b:
+                        if st.button("➕ To Watch", key=f"to_watch_{row.get('id', idx)}", width='stretch'):
+                            new_to_watch = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed'),
+                                'poster_path': row.get('poster_path')
+                            }])
+                            st.session_state.to_watch = pd.concat([st.session_state.to_watch, new_to_watch]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                            st.toast(f"Added {row['title']} to To Watch!", icon="📝")
+                            st.rerun()
+                    
+                    with col_c:
+                        if st.button("👎 Disliked", key=f"disliked_{row.get('id', idx)}", width='stretch'):
+                            new_dislike = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed')
+                            }])
+                            st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.disliked, DISLIKED_FILE)
+                            
+                            new_entry = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'rating': None,
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed'),
+                                'poster_path': row.get('poster_path')
+                            }])
+                            st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.watched, WATCHED_FILE)
+                            
+                            st.toast(f"Added {row['title']} as Disliked", icon="👎")
+                            st.rerun()
+                    
+                    with col_d:
+                        if st.button("👎 Not Interested", key=f"not_interested_{row.get('id', idx)}", width='stretch'):
+                            new_dislike = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed')
+                            }])
+                            st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.disliked, DISLIKED_FILE)
+                            st.toast(f"Got it — won't show again", icon="👎")
+                            st.rerun()
+                
+                with st.expander(f"🔍 Details for {row['title']}"):
+                    details = get_movie_details(row.get('id', 0))
+                    if details:
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write(f"**Runtime:** {details.get('runtime', 'N/A')} min")
+                            st.write(f"**Genres:** {', '.join([g['name'] for g in details.get('genres', [])])}")
+                        with col2:
+                            if details.get('credits') and details['credits'].get('crew'):
+                                directors = [p['name'] for p in details['credits']['crew'] if p['job'] == 'Director'][:2]
+                                st.write(f"**Director:** {', '.join(directors) if directors else 'N/A'}")
+                            
+                            if details.get('credits') and details['credits'].get('cast'):
+                                cast = [p['name'] for p in details['credits']['cast'][:5]]
+                                st.write(f"**Top Cast:** {', '.join(cast)}")
+                        
+                        imdb_id = details.get('external_ids', {}).get('imdb_id')
+                        if imdb_id:
+                            st.markdown(f"[🔗 View on IMDB](https://www.imdb.com/title/{imdb_id}/)")
+                        st.markdown(f"[🔗 View on TMDB](https://www.themoviedb.org/movie/{row.get('id', 0)})")
+                    else:
+                        st.caption("Could not load additional details.")
+                
+                st.divider()
 
 # ====================== TO WATCH TAB ======================
 with tab2:
@@ -705,25 +882,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-# ====================== POSTER WALL TAB ======================
-with tab4:
-    st.header("🖼️ Poster Wall")
-    st.caption("Your personal movie gallery")
-    
-    if len(st.session_state.watched) > 0:
-        posters = st.session_state.watched.dropna(subset=['poster_path'])
-        posters = posters[posters['poster_path'].astype(str) != 'None']
-        
-        if len(posters) > 0:
-            cols = st.columns(6)
-            for idx, (i, row) in enumerate(posters.iterrows()):
-                col = cols[idx % 6]
-                with col:
-                    st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", use_container_width=True)
-                    st.caption(f"**{row['title']}** ({row['year']})")
-        else:
-            st.info("No posters available yet.")
-    else:
-        st.info("Your watched list is empty. Add some movies first!")
-
-st.sidebar.caption("Added Smart Picker + Mood Selector + Poster Wall")
+st.sidebar.caption("Removed Poster Wall • Regular feed always visible")
