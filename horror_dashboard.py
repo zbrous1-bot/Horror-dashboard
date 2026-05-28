@@ -144,56 +144,51 @@ def load_list(file, columns):
 def save_list(df, file):
     df.to_csv(file, index=False)
 
-# ====================== BACKUP & RESTORE (NEW) ======================
+# ====================== BACKUP & RESTORE ======================
 st.sidebar.subheader("💾 Backup & Restore")
 
-col1, col2 = st.sidebar.columns(2)
-with col1:
-    if st.button("📥 Download Watched"):
-        if len(st.session_state.watched) > 0:
-            st.download_button("Download watched_list.csv", 
-                             st.session_state.watched.to_csv(index=False), 
-                             "watched_list.csv", "text/csv")
-        else:
-            st.warning("No data to download")
-with col2:
-    if st.button("📥 Download To Watch"):
-        if len(st.session_state.to_watch) > 0:
-            st.download_button("Download to_watch_list.csv", 
-                             st.session_state.to_watch.to_csv(index=False), 
-                             "to_watch_list.csv", "text/csv")
-        else:
-            st.warning("No data to download")
+if st.sidebar.button("📥 Download Watched"):
+    if len(st.session_state.watched) > 0:
+        csv = st.session_state.watched.to_csv(index=False)
+        st.download_button("Download watched_list.csv", csv, "watched_list.csv", "text/csv")
+    else:
+        st.sidebar.warning("Nothing to download")
+
+if st.sidebar.button("📥 Download To Watch"):
+    if len(st.session_state.to_watch) > 0:
+        csv = st.session_state.to_watch.to_csv(index=False)
+        st.download_button("Download to_watch_list.csv", csv, "to_watch_list.csv", "text/csv")
+    else:
+        st.sidebar.warning("Nothing to download")
 
 if st.sidebar.button("📥 Download Disliked"):
     if len(st.session_state.disliked) > 0:
-        st.download_button("Download disliked_list.csv", 
-                         st.session_state.disliked.to_csv(index=False), 
-                         "disliked_list.csv", "text/csv")
+        csv = st.session_state.disliked.to_csv(index=False)
+        st.download_button("Download disliked_list.csv", csv, "disliked_list.csv", "text/csv")
     else:
-        st.warning("No data to download")
+        st.sidebar.warning("Nothing to download")
 
-# Restore from uploaded files
-st.sidebar.subheader("📤 Restore from Backup")
-uploaded_watched = st.sidebar.file_uploader("Upload watched_list.csv", type="csv", key="restore_watched")
-if uploaded_watched:
-    st.session_state.watched = pd.read_csv(uploaded_watched)
+# Restore
+st.sidebar.subheader("📤 Restore Backup")
+up_w = st.sidebar.file_uploader("Upload watched_list.csv", type="csv", key="up_w")
+if up_w:
+    st.session_state.watched = pd.read_csv(up_w)
     save_list(st.session_state.watched, WATCHED_FILE)
-    st.sidebar.success("✅ Watched list restored!")
+    st.sidebar.success("✅ Watched restored!")
     st.rerun()
 
-uploaded_to_watch = st.sidebar.file_uploader("Upload to_watch_list.csv", type="csv", key="restore_to_watch")
-if uploaded_to_watch:
-    st.session_state.to_watch = pd.read_csv(uploaded_to_watch)
+up_tw = st.sidebar.file_uploader("Upload to_watch_list.csv", type="csv", key="up_tw")
+if up_tw:
+    st.session_state.to_watch = pd.read_csv(up_tw)
     save_list(st.session_state.to_watch, TO_WATCH_FILE)
-    st.sidebar.success("✅ To Watch list restored!")
+    st.sidebar.success("✅ To Watch restored!")
     st.rerun()
 
-uploaded_disliked = st.sidebar.file_uploader("Upload disliked_list.csv", type="csv", key="restore_disliked")
-if uploaded_disliked:
-    st.session_state.disliked = pd.read_csv(uploaded_disliked)
+up_d = st.sidebar.file_uploader("Upload disliked_list.csv", type="csv", key="up_d")
+if up_d:
+    st.session_state.disliked = pd.read_csv(up_d)
     save_list(st.session_state.disliked, DISLIKED_FILE)
-    st.sidebar.success("✅ Disliked list restored!")
+    st.sidebar.success("✅ Disliked restored!")
     st.rerun()
 
 # ====================== FILE STATUS ======================
@@ -206,7 +201,7 @@ if st.sidebar.button("🔄 Reload from Files"):
     st.session_state.watched = load_list(WATCHED_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
     st.session_state.to_watch = load_list(TO_WATCH_FILE, ['title', 'year', 'matched_id', 'genre', 'poster_path'])
     st.session_state.disliked = load_list(DISLIKED_FILE, ['title', 'year', 'matched_id', 'genre'])
-    st.toast("Reloaded", icon="🔄")
+    st.toast("Reloaded from files", icon="🔄")
     st.rerun()
 
 # Load on startup
@@ -310,7 +305,8 @@ with stats_container:
 st.divider()
 
 # ====================== SIDEBAR ======================
-st.sidebar.header("📥 Import from Letterboxd")
+st.sidebar.header("📥 Import from Letterboxd (FIXED)")
+
 uploaded = st.sidebar.file_uploader("Upload diary.csv", type="csv")
 
 if uploaded:
@@ -325,31 +321,46 @@ if uploaded:
         if 'rating' not in user_df.columns:
             user_df['rating'] = None
 
-        matched = []
+        current_titles = set(st.session_state.watched['title'].tolist())
+        new_movies = []
         skipped = []
+
         for idx, row in user_df.iterrows():
             title = str(row['title']).strip()
+            if title in current_titles:
+                continue  # Skip if already in watched
+
             best = search_movie_on_tmdb(title)
             if best is not None:
-                matched.append({
+                rating = row.get('rating')
+                # Fix: Only set rating=5.0 if Letterboxd gave 5 stars
+                if pd.notna(rating) and float(rating) == 5.0:
+                    rating = 5.0
+                else:
+                    rating = None  # Don't mark as loved unless exactly 5
+
+                new_movies.append({
                     'title': best['title'],
                     'year': best.get('year'),
-                    'rating': row.get('rating'),
+                    'rating': rating,
                     'matched_id': best.get('id', 999999),
                     'genre': best.get('genre', 'Mixed'),
                     'poster_path': best.get('poster_path')
                 })
             else:
                 skipped.append(title)
-        
-        if matched:
-            new_df = pd.DataFrame(matched)
+
+        if new_movies:
+            new_df = pd.DataFrame(new_movies)
             st.session_state.watched = pd.concat([st.session_state.watched, new_df]).drop_duplicates(subset=['title'])
             save_list(st.session_state.watched, WATCHED_FILE)
-            st.sidebar.success(f"✅ Imported {len(matched)} movies!")
+            st.sidebar.success(f"✅ Added {len(new_movies)} new movies!")
             if skipped:
-                st.sidebar.warning(f"Skipped {len(skipped)} movies")
+                st.sidebar.warning(f"Skipped {len(skipped)} movies (not found)")
             st.rerun()
+        else:
+            st.sidebar.info("No new movies to add (all already in your list)")
+
     except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
@@ -717,4 +728,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Backup & Restore tools added")
+st.sidebar.caption("Fixed import bug - Loved tags now preserved")
