@@ -131,22 +131,32 @@ DISLIKED_FILE = "disliked_list.csv"
 
 def load_list(file, columns):
     if os.path.exists(file):
-        df = pd.read_csv(file)
-        for col in columns:
-            if col not in df.columns:
-                df[col] = None
-        return df
+        try:
+            df = pd.read_csv(file)
+            for col in columns:
+                if col not in df.columns:
+                    df[col] = None
+            return df
+        except:
+            return pd.DataFrame(columns=columns)
     return pd.DataFrame(columns=columns)
 
 def save_list(df, file):
     df.to_csv(file, index=False)
 
+# ====================== MANUAL RELOAD BUTTON (NEW) ======================
+if st.sidebar.button("🔄 Reload from Saved Files"):
+    st.session_state.watched = load_list(WATCHED_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
+    st.session_state.to_watch = load_list(TO_WATCH_FILE, ['title', 'year', 'matched_id', 'genre', 'poster_path'])
+    st.session_state.disliked = load_list(DISLIKED_FILE, ['title', 'year', 'matched_id', 'genre'])
+    st.toast("✅ Data reloaded from saved files!", icon="🔄")
+    st.rerun()
+
+# Load on startup
 if 'watched' not in st.session_state:
     st.session_state.watched = load_list(WATCHED_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
-
 if 'to_watch' not in st.session_state:
     st.session_state.to_watch = load_list(TO_WATCH_FILE, ['title', 'year', 'matched_id', 'genre', 'poster_path'])
-
 if 'disliked' not in st.session_state:
     st.session_state.disliked = load_list(DISLIKED_FILE, ['title', 'year', 'matched_id', 'genre'])
 
@@ -574,7 +584,7 @@ with tab2:
     else:
         st.info("Your To Watch list is empty. Add movies from Recommendations!")
 
-# ====================== WATCHED TAB (ONLY DELETE BUTTON) ======================
+# ====================== WATCHED TAB ======================
 with tab3:
     st.header("📋 Watched Movies")
     
@@ -615,7 +625,6 @@ with tab3:
                     else:
                         st.caption("🎬 No poster")
                     
-                    # Determine tag
                     is_disliked = row['title'] in st.session_state.disliked['title'].values
                     is_loved = pd.notna(row.get('rating')) and row['rating'] == 5.0
                     
@@ -633,7 +642,6 @@ with tab3:
                     rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
                     st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text} {tag}", unsafe_allow_html=True)
                     
-                    # Only Delete button now
                     if st.button("🗑️ Delete", key=f"del_watched_{row['title']}_{i}", width='stretch'):
                         orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
                         st.session_state.watched = st.session_state.watched.drop(orig_idx)
@@ -652,4 +660,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Removed 'Didn't Like' Button from Watched")
+st.sidebar.caption("Added 'Reload from Saved Files' button")
