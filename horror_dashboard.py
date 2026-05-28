@@ -194,10 +194,10 @@ st.sidebar.write(f"**Watched:** {len(st.session_state.get('watched', []))} movie
 st.sidebar.write(f"**To Watch:** {len(st.session_state.get('to_watch', []))} movies")
 st.sidebar.write(f"**Disliked:** {len(st.session_state.get('disliked', []))} movies")
 
-if st.sidebar.button("🧹 Clean Disliked List (remove watched movies)"):
+if st.sidebar.button("🧹 Clean Disliked List"):
     st.session_state.disliked = st.session_state.disliked[~st.session_state.disliked['title'].isin(st.session_state.watched['title'].tolist())]
     save_list(st.session_state.disliked, DISLIKED_FILE)
-    st.sidebar.success("✅ Cleaned! Disliked list updated.")
+    st.sidebar.success("✅ Cleaned!")
     st.rerun()
 
 if st.sidebar.button("🔄 Reload from Files"):
@@ -261,12 +261,12 @@ if global_search != st.session_state.global_search:
     st.session_state.global_search = global_search
     st.rerun()
 
-# ====================== STATS ======================
+# ====================== STATS (Removed standalone Disliked) ======================
 st.subheader("📊 Your Stats")
 
 stats_container = st.container()
 with stats_container:
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown("""
@@ -287,15 +287,6 @@ with stats_container:
         """.format(len(st.session_state.to_watch)), unsafe_allow_html=True)
     
     with col3:
-        st.markdown("""
-        <div style="background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #475569; text-align: center;">
-            <div style="font-size: 32px; margin-bottom: 8px;">👎</div>
-            <div style="font-size: 28px; font-weight: bold; color: #f87171;">{}</div>
-            <div style="color: #94a3b8; font-size: 14px;">Disliked</div>
-        </div>
-        """.format(len(st.session_state.disliked)), unsafe_allow_html=True)
-    
-    with col4:
         loved_count = len(st.session_state.watched[st.session_state.watched['rating'] == 5.0])
         st.markdown("""
         <div style="background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #475569; text-align: center;">
@@ -357,7 +348,7 @@ if uploaded:
             st.session_state.watched = pd.concat([st.session_state.watched, new_df]).drop_duplicates(subset=['title'])
             save_list(st.session_state.watched, WATCHED_FILE)
             
-            # NEW: Remove from disliked if re-imported
+            # Remove from disliked if re-imported
             st.session_state.disliked = st.session_state.disliked[~st.session_state.disliked['title'].isin([m['title'] for m in new_movies])]
             save_list(st.session_state.disliked, DISLIKED_FILE)
             
@@ -735,4 +726,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Added automatic + manual cleanup for Disliked list")
+st.sidebar.caption("Removed standalone Disliked stat")
