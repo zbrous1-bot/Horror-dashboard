@@ -90,9 +90,16 @@ def get_movie_details(movie_id):
 @st.cache_data(ttl=3600)
 def load_movies():
     genres = {
-        27: "Horror", 878: "SciFi", 53: "Thriller",
-        28: "Action", 12: "Adventure", 9648: "Mystery",
-        14: "Fantasy", 80: "Crime", 18: "Drama", 35: "Comedy"
+        27: "Horror", 
+        878: "SciFi", 
+        53: "Thriller",
+        28: "Action",
+        12: "Adventure",
+        9648: "Mystery",
+        14: "Fantasy",
+        80: "Crime",
+        18: "Drama",
+        35: "Comedy"
     }
     all_movies = []
     for genre_id, genre_name in genres.items():
@@ -101,10 +108,19 @@ def load_movies():
                 "with_genres": str(genre_id),
                 "sort_by": "popularity.desc",
                 "vote_count.gte": 30,
-                "page": page
+                "page": page,
+                "include_adult": "false"          # ← This removes pornographic films
             })
             if data and 'results' in data:
                 for m in data['results']:
+                    # Extra safety filter
+                    title = (m.get('title') or m.get('original_title') or "").lower()
+                    overview = (m.get('overview') or "").lower()
+                    
+                    bad_keywords = ["porn", "xxx", "erotic", "adult", "nude", "sex tape", "playboy"]
+                    if any(kw in title or kw in overview for kw in bad_keywords):
+                        continue
+                    
                     all_movies.append({
                         'title': m.get('title') or m.get('original_title'),
                         'year': m.get('release_date', '')[:4] if m.get('release_date') else None,
@@ -118,8 +134,6 @@ def load_movies():
     df = df.dropna(subset=['title'])
     df = df.drop_duplicates(subset=['title'])
     return df
-
-movies_df = load_movies()
 
 # ====================== PERSISTENT LISTS ======================
 WATCHED_FILE = "watched_list.csv"
@@ -365,26 +379,58 @@ def get_genre_color(genre):
 with tab1:
     st.header("🎯 Recommendations For You")
     
-    # === MOVIE MOOD SELECTOR ===
+    # === IMPROVED MOVIE MOOD SELECTOR ===
     st.subheader("😌 How are you feeling tonight?")
+    
     mood_options = {
-        "Feeling spooky 👻": ["supernatural", "ghost", "haunted", "demon", "horror"],
-        "Want something funny 😂": ["funny", "comedy", "humor", "laugh", "hilarious"],
-        "Mind-bending night 🌀": ["mind-bending", "twist", "psychological", "reality"],
-        "Cozy horror 🕯️": ["slow burn", "atmospheric", "folk", "rural"],
-        "Action-packed 🔥": ["action", "fight", "chase", "explosion", "intense"],
-        "Cosmic horror 🌌": ["cosmic", "lovecraft", "eldritch", "space", "alien"]
+        "Feeling spooky 👻": {
+            "keywords": ["supernatural", "ghost", "haunted", "demon", "spirit", "curse", "possession", "witch", "vampire", "zombie"],
+            "genres": ["Horror"]
+        },
+        "Want something funny 😂": {
+            "keywords": ["funny", "comedy", "humor", "laugh", "hilarious", "sarcastic", "witty", "parody"],
+            "genres": ["Comedy"]
+        },
+        "Mind-bending night 🌀": {
+            "keywords": ["mind-bending", "twist", "psychological", "reality", "surreal", "dream", "illusion", "memory"],
+            "genres": ["Mystery", "Thriller", "SciFi"]
+        },
+        "Cozy horror 🕯️": {
+            "keywords": ["slow burn", "atmospheric", "folk", "rural", "quiet", "eerie", "dread", "isolation"],
+            "genres": ["Horror"]
+        },
+        "Action-packed 🔥": {
+            "keywords": ["action", "fight", "chase", "explosion", "shootout", "intense", "battle", "revenge"],
+            "genres": ["Action", "Adventure"]
+        },
+        "Cosmic horror 🌌": {
+            "keywords": ["cosmic", "lovecraft", "eldritch", "space", "alien", "void", "ancient", "entity"],
+            "genres": ["Horror", "SciFi"]
+        }
     }
     
     selected_mood = st.selectbox("Choose your mood", list(mood_options.keys()), index=0)
     
     if st.button("🎯 Get Recommendations for this Mood", width='stretch'):
-        keywords = mood_options[selected_mood]
-        mood_recs = movies_df[movies_df['overview'].str.contains('|'.join(keywords), case=False, na=False)]
-        mood_recs = mood_recs[~mood_recs['title'].isin(st.session_state.watched['title'].tolist() + 
-                                                      st.session_state.disliked['title'].tolist() + 
-                                                      st.session_state.to_watch['title'].tolist())]
-        st.session_state.mood_recommendations = mood_recs.head(8).to_dict('records')
+        mood_data = mood_options[selected_mood]
+        keywords = mood_data["keywords"]
+        target_genres = mood_data["genres"]
+        
+        # Filter by genre first
+        genre_filtered = movies_df[movies_df['genre'].isin(target_genres)]
+        
+        # Then filter by keywords in overview
+        keyword_mask = genre_filtered['overview'].str.contains('|'.join(keywords), case=False, na=False)
+        mood_recs = genre_filtered[keyword_mask]
+        
+        # Remove already watched/disliked/to watch
+        mood_recs = mood_recs[~mood_recs['title'].isin(
+            st.session_state.watched['title'].tolist() + 
+            st.session_state.disliked['title'].tolist() + 
+            st.session_state.to_watch['title'].tolist()
+        )]
+        
+        st.session_state.mood_recommendations = mood_recs.head(10).to_dict('records')
         st.rerun()
     
     if 'mood_recommendations' in st.session_state:
@@ -415,9 +461,9 @@ with tab1:
     
     st.divider()
     
-    # === WHAT TO WATCH TONIGHT? SMART PICKER ===
+    # === IMPROVED "WHAT TO WATCH TONIGHT?" SMART PICKER ===
     with st.expander("🎯 What to Watch Tonight? (Smart Picker)", expanded=False):
-        st.write("Answer a few quick questions and I'll pick the perfect movie for you!")
+        st.write("Answer a few questions and I'll intelligently pick the best movie for you!")
         
         time_choice = st.radio("How much time do you have?", 
                               ["Short (< 90 min)", "Medium (90-120 min)", "Long (> 120 min)"], 
@@ -430,67 +476,101 @@ with tab1:
         if st.button("🎲 Find My Perfect Movie", width='stretch'):
             filtered = movies_df.copy()
             
+            # Mood-based filtering
             if "Horror" in mood_choice:
-                filtered = filtered[filtered['overview'].str.contains("horror|scary|ghost|demon", case=False, na=False)]
+                filtered = filtered[filtered['overview'].str.contains("horror|scary|ghost|demon|supernatural", case=False, na=False)]
             elif "Funny" in mood_choice:
-                filtered = filtered[filtered['overview'].str.contains("funny|comedy|humor|laugh", case=False, na=False)]
+                filtered = filtered[filtered['overview'].str.contains("funny|comedy|humor|laugh|hilarious", case=False, na=False)]
             elif "Action" in mood_choice:
-                filtered = filtered[filtered['overview'].str.contains("action|fight|chase|explosion", case=False, na=False)]
+                filtered = filtered[filtered['overview'].str.contains("action|fight|chase|explosion|shootout", case=False, na=False)]
             elif "Mind-bending" in mood_choice:
-                filtered = filtered[filtered['overview'].str.contains("mind|twist|psychological|reality", case=False, na=False)]
+                filtered = filtered[filtered['overview'].str.contains("mind|twist|psychological|reality|surreal", case=False, na=False)]
+            elif "Cozy" in mood_choice:
+                filtered = filtered[filtered['overview'].str.contains("slow burn|atmospheric|folk|rural|quiet", case=False, na=False)]
+            elif "Thought-provoking" in mood_choice:
+                filtered = filtered[filtered['overview'].str.contains("philosophical|deep|thought|existential|moral", case=False, na=False)]
             
-            filtered = filtered[~filtered['title'].isin(st.session_state.watched['title'].tolist() + 
-                                                       st.session_state.disliked['title'].tolist() + 
-                                                       st.session_state.to_watch['title'].tolist())]
+            # Remove already watched/disliked/to watch
+            filtered = filtered[~filtered['title'].isin(
+                st.session_state.watched['title'].tolist() + 
+                st.session_state.disliked['title'].tolist() + 
+                st.session_state.to_watch['title'].tolist()
+            )]
             
             if len(filtered) > 0:
-                pick = filtered.sample(1).iloc[0]
-                st.session_state.smart_pick = pick
+                # Add scoring
+                filtered = filtered.copy()
+                filtered['score'] = 0
+                
+                # Boost newer movies
+                filtered.loc[filtered['year'].astype(float) >= 2015, 'score'] += 2
+                filtered.loc[filtered['year'].astype(float) >= 2020, 'score'] += 1
+                
+                # Boost higher rated movies
+                filtered.loc[filtered['vote_average'] >= 7.0, 'score'] += 3
+                filtered.loc[filtered['vote_average'] >= 7.5, 'score'] += 2
+                
+                # Time-based filtering (approximate runtime)
+                if "Short" in time_choice:
+                    filtered = filtered[filtered['vote_average'] > 6.0]  # Prefer better movies for short time
+                elif "Long" in time_choice:
+                    filtered.loc[filtered['vote_average'] >= 7.0, 'score'] += 2  # Reward quality for long watches
+                
+                # Pick top 3
+                top_picks = filtered.sort_values('score', ascending=False).head(3)
+                st.session_state.smart_picks = top_picks.to_dict('records')
                 st.rerun()
             else:
-                st.warning("Couldn't find a perfect match. Try different options!")
+                st.warning("Couldn't find a good match. Try different options!")
     
-    if 'smart_pick' in st.session_state:
-        pick = st.session_state.smart_pick
-        st.success(f"🎯 Perfect pick for you: **{pick['title']}** ({pick['year']})")
-        st.write(pick['overview'][:200] + "...")
+    if 'smart_picks' in st.session_state:
+        st.subheader("🎯 Here are your top picks:")
         
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("➕ Add to To Watch", key="smart_to_watch"):
-                new_to_watch = pd.DataFrame([{
-                    'title': pick['title'],
-                    'year': pick['year'],
-                    'matched_id': pick.get('id', 999999),
-                    'genre': pick.get('genre', 'Mixed'),
-                    'poster_path': pick.get('poster_path')
-                }])
-                st.session_state.to_watch = pd.concat([st.session_state.to_watch, new_to_watch]).drop_duplicates(subset=['title'])
-                save_list(st.session_state.to_watch, TO_WATCH_FILE)
-                del st.session_state.smart_pick
-                st.rerun()
-        with col2:
-            if st.button("❤️ Loved it", key="smart_loved"):
-                new_entry = pd.DataFrame([{
-                    'title': pick['title'],
-                    'year': pick['year'],
-                    'rating': 5.0,
-                    'matched_id': pick.get('id', 999999),
-                    'genre': pick.get('genre', 'Mixed'),
-                    'poster_path': pick.get('poster_path')
-                }])
-                st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
-                save_list(st.session_state.watched, WATCHED_FILE)
-                del st.session_state.smart_pick
-                st.rerun()
-        with col3:
-            if st.button("❌ Not for me", key="smart_cancel"):
-                del st.session_state.smart_pick
-                st.rerun()
+        for i, pick in enumerate(st.session_state.smart_picks):
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                if pd.notna(pick.get('poster_path')):
+                    st.image(f"https://image.tmdb.org/t/p/w200{pick['poster_path']}", width=90)
+            with col2:
+                st.markdown(f"**{pick['title']}** ({pick['year']}) — Score: {pick.get('score', 0)}")
+                st.caption(pick['overview'][:160] + "...")
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button(f"➕ Add to To Watch", key=f"smart_add_{i}"):
+                        new_to_watch = pd.DataFrame([{
+                            'title': pick['title'],
+                            'year': pick['year'],
+                            'matched_id': pick.get('id', 999999),
+                            'genre': pick.get('genre', 'Mixed'),
+                            'poster_path': pick.get('poster_path')
+                        }])
+                        st.session_state.to_watch = pd.concat([st.session_state.to_watch, new_to_watch]).drop_duplicates(subset=['title'])
+                        save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                        del st.session_state.smart_picks
+                        st.rerun()
+                with col_b:
+                    if st.button(f"❤️ Loved it", key=f"smart_love_{i}"):
+                        new_entry = pd.DataFrame([{
+                            'title': pick['title'],
+                            'year': pick['year'],
+                            'rating': 5.0,
+                            'matched_id': pick.get('id', 999999),
+                            'genre': pick.get('genre', 'Mixed'),
+                            'poster_path': pick.get('poster_path')
+                        }])
+                        st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                        save_list(st.session_state.watched, WATCHED_FILE)
+                        del st.session_state.smart_picks
+                        st.rerun()
+        
+        if st.button("Clear Picks"):
+            del st.session_state.smart_picks
+            st.rerun()
     
     st.divider()
     
-    # ====================== REGULAR RECOMMENDATIONS FEED (ALWAYS SHOWN) ======================
+    # ====================== REGULAR RECOMMENDATIONS FEED ======================
     if len(st.session_state.watched) == 0:
         st.warning("Add some watched movies first!")
     else:
@@ -500,7 +580,6 @@ with tab1:
         
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
-        # FIXED: Safe check for global_search
         if st.session_state.global_search:
             recs = recs[recs['title'].str.contains(st.session_state.global_search, case=False, na=False)]
             st.caption(f"🔍 Showing results for: **{st.session_state.global_search}** ({len(recs)} found)")
