@@ -1,59 +1,3 @@
-**✅ Got it.** Let's fix the **Recently Watched** scroller properly this time.
-
-The issue is likely that `year` has mixed types or NaN values, causing the sorting and display to break.
-
----
-
-### Here's the **fixed and more robust** version:
-
-Replace your current **Recently Watched** section with this improved code:
-
-```python
-# ====================== RECENTLY WATCHED (FIXED & ROBUST) ======================
-if len(st.session_state.watched) > 0:
-    st.subheader("🕒 Recently Watched")
-    
-    # Clean and prepare data
-    recent = st.session_state.watched.copy()
-    recent = recent.dropna(subset=['title'])  # Remove any bad entries
-    recent['year'] = pd.to_numeric(recent['year'], errors='coerce')  # Convert year safely
-    recent = recent.sort_values('year', ascending=False).head(8).reset_index(drop=True)
-    
-    cols = st.columns(8)
-    
-    for idx in range(8):
-        with cols[idx]:
-            if idx < len(recent):
-                row = recent.iloc[idx]
-                
-                # Poster
-                poster = row.get('poster_path')
-                if pd.notna(poster) and str(poster).strip() not in ['', 'None', 'nan']:
-                    st.image(f"https://image.tmdb.org/t/p/w200{poster}", width=85)
-                else:
-                    st.caption("🎬")
-                
-                # Title
-                title = str(row.get('title', 'Unknown Movie'))
-                if len(title) > 15:
-                    title = title[:15] + "…"
-                
-                # Year
-                year = row.get('year')
-                year_display = f"({int(year)})" if pd.notna(year) else ""
-                
-                st.caption(f"**{title}** {year_display}")
-            else:
-                st.caption("—")
-```
-
----
-
-### Full Clean Code (Recommended)
-
-If you want the **entire updated file** with this fix applied, here it is:
-
-```python
 import streamlit as st
 import pandas as pd
 import requests
@@ -954,9 +898,4 @@ with tab3:
         else:
             st.info("No movies match your search.")
 
-st.sidebar.caption("✅ Recently Watched fully fixed")
-```
-
-**Commit and redeploy.**
-
-This version should finally fix the Recently Watched scroller. Let me know if it's still broken!
+st.sidebar.caption("✅ Recently Watched fixed")
