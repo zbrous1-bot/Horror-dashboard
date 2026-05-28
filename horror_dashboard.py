@@ -1,57 +1,3 @@
-**✅ Fixed!** The **Recently Watched** scroller had a bug where the first movie was getting corrupted (likely due to NaN values or bad data handling).
-
-I've cleaned it up with better error handling and more robust display logic.
-
----
-
-### Updated Code (Fixed Recently Watched Section):
-
-Replace your current **Recently Watched** section with this improved version:
-
-```python
-# ====================== RECENTLY WATCHED SCROLLER (FIXED) ======================
-if len(st.session_state.watched) > 0:
-    st.subheader("🕒 Recently Watched")
-    
-    # Get the most recently watched movies (sorted by year descending)
-    recent = st.session_state.watched.sort_values('year', ascending=False).head(8).reset_index(drop=True)
-    
-    # Create 8 columns
-    cols = st.columns(8)
-    
-    for idx in range(8):
-        with cols[idx]:
-            if idx < len(recent):
-                row = recent.iloc[idx]
-                
-                # Safe poster display
-                poster = row.get('poster_path')
-                if pd.notna(poster) and str(poster).strip() != '' and str(poster) != 'None':
-                    st.image(f"https://image.tmdb.org/t/p/w200{poster}", width=85)
-                else:
-                    st.caption("🎬")
-                
-                # Safe title display
-                title = str(row.get('title', 'Unknown'))
-                if len(title) > 16:
-                    title = title[:16] + "…"
-                
-                year = row.get('year')
-                year_display = f"({int(year)})" if pd.notna(year) else ""
-                
-                st.caption(f"**{title}** {year_display}")
-            else:
-                # Empty slot
-                st.caption("—")
-```
-
----
-
-### Full Updated Code with Fix:
-
-Here's the **complete code** with the fixed Recently Watched section:
-
-```python
 import streamlit as st
 import pandas as pd
 import requests
@@ -949,9 +895,4 @@ with tab3:
         else:
             st.info("No movies match your search.")
 
-st.sidebar.caption("✅ Recently Watched fixed")
-```
-
-**Commit and redeploy.**
-
-The Recently Watched scroller should now work correctly without any corruption. Let me know if you see any other issues!
+st.sidebar.caption("✅ Recently Watched fixed + All formatting applied")
