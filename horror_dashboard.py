@@ -650,7 +650,7 @@ with tab2:
     else:
         st.info("Your To Watch list is empty. Add movies from Recommendations!")
 
-# ====================== WATCHED TAB ======================
+# ====================== WATCHED TAB (SAFE DELETE) ======================
 with tab3:
     st.header("📋 Watched Movies")
     
@@ -708,11 +708,16 @@ with tab3:
                     rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
                     st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text} {tag}", unsafe_allow_html=True)
                     
+                    # SAFE DELETE (fixed IndexError)
                     if st.button("🗑️ Delete", key=f"del_watched_{row['title']}_{i}", width='stretch'):
-                        orig_idx = st.session_state.watched[st.session_state.watched['title'] == row['title']].index[0]
-                        st.session_state.watched = st.session_state.watched.drop(orig_idx)
-                        save_list(st.session_state.watched, WATCHED_FILE)
-                        st.rerun()
+                        mask = st.session_state.watched['title'] == row['title']
+                        if mask.any():
+                            orig_idx = st.session_state.watched[mask].index[0]
+                            st.session_state.watched = st.session_state.watched.drop(orig_idx)
+                            save_list(st.session_state.watched, WATCHED_FILE)
+                            st.rerun()
+                        else:
+                            st.warning("Movie not found in list")
                     
                     st.markdown("</div>", unsafe_allow_html=True)
         
@@ -726,4 +731,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Removed standalone Disliked stat")
+st.sidebar.caption("Fixed delete crash")
