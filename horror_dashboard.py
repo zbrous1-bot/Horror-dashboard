@@ -394,6 +394,7 @@ def get_genre_color(genre):
     return genre_colors.get(genre, "#6b7280")
 
 # ====================== RECOMMENDATIONS TAB ======================
+# ====================== RECOMMENDATIONS TAB (CLEAN BUTTONS) ======================
 with tab1:
     st.header("🎯 Recommendations For You")
     
@@ -488,7 +489,9 @@ with tab1:
                     st.caption(f"TMDB Score: {row.get('vote_average', 'N/A'):.1f}")
                     st.write(str(row['overview'])[:160] + "..." if len(str(row['overview'])) > 160 else row['overview'])
                     
-                    col_a, col_b, col_c, col_d = st.columns(4)
+                    # === CLEAN BUTTON LAYOUT ===
+                    # Row 1: Main actions (3 buttons)
+                    col_a, col_b, col_c = st.columns(3)
                     
                     with col_a:
                         if st.button("❤️ Loved it", key=f"loved_{row.get('id', idx)}", width='stretch'):
@@ -506,19 +509,6 @@ with tab1:
                             st.rerun()
                     
                     with col_b:
-                        if st.button("👎 Not Interested", key=f"not_interested_{row.get('id', idx)}", width='stretch'):
-                            new_dislike = pd.DataFrame([{
-                                'title': row['title'],
-                                'year': row['year'],
-                                'matched_id': row.get('id', 999999),
-                                'genre': row.get('genre', 'Mixed')
-                            }])
-                            st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
-                            save_list(st.session_state.disliked, DISLIKED_FILE)
-                            st.toast(f"Got it — won't show again", icon="👎")
-                            st.rerun()
-                    
-                    with col_c:
                         if st.button("➕ To Watch", key=f"to_watch_{row.get('id', idx)}", width='stretch'):
                             new_to_watch = pd.DataFrame([{
                                 'title': row['title'],
@@ -532,25 +522,7 @@ with tab1:
                             st.toast(f"Added {row['title']} to To Watch!", icon="📝")
                             st.rerun()
                     
-                    with col_d:
-                        if st.button("🔍 Similar to this", key=f"similar_{row.get('id', idx)}", width='stretch'):
-                            similar_data = tmdb_request(f"/movie/{row.get('id')}/similar", {"page": 1})
-                            if similar_data and 'results' in similar_data:
-                                st.session_state.similar_movies = []
-                                for m in similar_data['results'][:8]:
-                                    st.session_state.similar_movies.append({
-                                        'title': m.get('title') or m.get('original_title'),
-                                        'year': m.get('release_date', '')[:4] if m.get('release_date') else None,
-                                        'overview': m.get('overview', ''),
-                                        'vote_average': m.get('vote_average'),
-                                        'poster_path': m.get('poster_path'),
-                                        'id': m.get('id'),
-                                        'genre': 'Mixed'
-                                    })
-                                st.toast(f"Showing movies similar to {row['title']}", icon="🔍")
-                                st.rerun()
-                    
-                    with col_d:
+                    with col_c:
                         if st.button("👎 Disliked", key=f"disliked_{row.get('id', idx)}", width='stretch'):
                             new_dislike = pd.DataFrame([{
                                 'title': row['title'],
@@ -574,6 +546,40 @@ with tab1:
                             
                             st.toast(f"Added {row['title']} as Disliked", icon="👎")
                             st.rerun()
+                    
+                    # Row 2: Secondary actions (2 buttons)
+                    col_d, col_e = st.columns(2)
+                    
+                    with col_d:
+                        if st.button("👎 Not Interested", key=f"not_interested_{row.get('id', idx)}", width='stretch'):
+                            new_dislike = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'matched_id': row.get('id', 999999),
+                                'genre': row.get('genre', 'Mixed')
+                            }])
+                            st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.disliked, DISLIKED_FILE)
+                            st.toast(f"Got it — won't show again", icon="👎")
+                            st.rerun()
+                    
+                    with col_e:
+                        if st.button("🔍 Similar to this", key=f"similar_{row.get('id', idx)}", width='stretch'):
+                            similar_data = tmdb_request(f"/movie/{row.get('id')}/similar", {"page": 1})
+                            if similar_data and 'results' in similar_data:
+                                st.session_state.similar_movies = []
+                                for m in similar_data['results'][:8]:
+                                    st.session_state.similar_movies.append({
+                                        'title': m.get('title') or m.get('original_title'),
+                                        'year': m.get('release_date', '')[:4] if m.get('release_date') else None,
+                                        'overview': m.get('overview', ''),
+                                        'vote_average': m.get('vote_average'),
+                                        'poster_path': m.get('poster_path'),
+                                        'id': m.get('id'),
+                                        'genre': 'Mixed'
+                                    })
+                                st.toast(f"Showing movies similar to {row['title']}", icon="🔍")
+                                st.rerun()
                 
                 with st.expander(f"🔍 Details for {row['title']}"):
                     details = get_movie_details(row.get('id', 0))
