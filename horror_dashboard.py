@@ -144,12 +144,17 @@ def load_list(file, columns):
 def save_list(df, file):
     df.to_csv(file, index=False)
 
-# ====================== MANUAL RELOAD BUTTON (NEW) ======================
+# ====================== FILE STATUS (NEW - VERY IMPORTANT) ======================
+st.sidebar.subheader("📁 Saved Data Status")
+st.sidebar.write(f"**watched_list.csv:** {len(st.session_state.get('watched', []))} movies")
+st.sidebar.write(f"**to_watch_list.csv:** {len(st.session_state.get('to_watch', []))} movies")
+st.sidebar.write(f"**disliked_list.csv:** {len(st.session_state.get('disliked', []))} movies")
+
 if st.sidebar.button("🔄 Reload from Saved Files"):
     st.session_state.watched = load_list(WATCHED_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
     st.session_state.to_watch = load_list(TO_WATCH_FILE, ['title', 'year', 'matched_id', 'genre', 'poster_path'])
     st.session_state.disliked = load_list(DISLIKED_FILE, ['title', 'year', 'matched_id', 'genre'])
-    st.toast("✅ Data reloaded from saved files!", icon="🔄")
+    st.toast("Reloaded from files", icon="🔄")
     st.rerun()
 
 # Load on startup
@@ -660,4 +665,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Added 'Reload from Saved Files' button")
+st.sidebar.caption("File status now visible in sidebar")
