@@ -207,9 +207,14 @@ if st.sidebar.button("🔄 Reload from Files"):
     st.toast("Reloaded from files", icon="🔄")
     st.rerun()
 
-# Load on startup
+# Load on startup + CLEAN BAD DATA
 if 'watched' not in st.session_state:
     st.session_state.watched = load_list(WATCHED_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
+    
+# === NEW: Remove any movies with missing titles ===
+st.session_state.watched = st.session_state.watched.dropna(subset=['title'])
+st.session_state.watched = st.session_state.watched[st.session_state.watched['title'].astype(str).str.strip() != '']
+
 if 'to_watch' not in st.session_state:
     st.session_state.to_watch = load_list(TO_WATCH_FILE, ['title', 'year', 'matched_id', 'genre', 'poster_path'])
 if 'disliked' not in st.session_state:
@@ -650,7 +655,7 @@ with tab2:
     else:
         st.info("Your To Watch list is empty. Add movies from Recommendations!")
 
-# ====================== WATCHED TAB (SAFE DELETE) ======================
+# ====================== WATCHED TAB (SAFE + CLEAN) ======================
 with tab3:
     st.header("📋 Watched Movies")
     
@@ -686,10 +691,13 @@ with tab3:
                     <div style="background: #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 16px; border: 1px solid #475569;">
                     """, unsafe_allow_html=True)
                     
-                    if pd.notna(row.get('poster_path')) and row['poster_path'] != 'None':
+                    if pd.notna(row.get('poster_path')) and str(row.get('poster_path')) != 'None':
                         st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=100)
                     else:
                         st.caption("🎬 No poster")
+                    
+                    title = row.get('title', 'Unknown')
+                    year = int(row['year']) if pd.notna(row.get('year')) else 'N/A'
                     
                     is_disliked = row['title'] in st.session_state.disliked['title'].values
                     is_loved = pd.notna(row.get('rating')) and row['rating'] == 5.0
@@ -706,18 +714,18 @@ with tab3:
                     genre_tag = f"<span style='color: {genre_color}; font-weight: bold;'>[{display_genre}]</span> " if display_genre else ""
                     
                     rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
-                    st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'}){rating_text} {tag}", unsafe_allow_html=True)
+                    st.markdown(f"**{genre_tag}{title}** ({year}){rating_text} {tag}", unsafe_allow_html=True)
                     
-                    # SAFE DELETE (fixed IndexError)
-                    if st.button("🗑️ Delete", key=f"del_watched_{row['title']}_{i}", width='stretch'):
-                        mask = st.session_state.watched['title'] == row['title']
+                    # SAFE DELETE
+                    if st.button("🗑️ Delete", key=f"del_watched_{title}_{i}", width='stretch'):
+                        mask = st.session_state.watched['title'] == title
                         if mask.any():
                             orig_idx = st.session_state.watched[mask].index[0]
                             st.session_state.watched = st.session_state.watched.drop(orig_idx)
                             save_list(st.session_state.watched, WATCHED_FILE)
                             st.rerun()
                         else:
-                            st.warning("Movie not found in list")
+                            st.warning("Movie not found")
                     
                     st.markdown("</div>", unsafe_allow_html=True)
         
@@ -731,4 +739,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Fixed delete crash")
+st.sidebar.caption("Fixed bad data + safe delete")
