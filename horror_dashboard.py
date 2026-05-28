@@ -144,17 +144,69 @@ def load_list(file, columns):
 def save_list(df, file):
     df.to_csv(file, index=False)
 
-# ====================== FILE STATUS (NEW - VERY IMPORTANT) ======================
-st.sidebar.subheader("📁 Saved Data Status")
-st.sidebar.write(f"**watched_list.csv:** {len(st.session_state.get('watched', []))} movies")
-st.sidebar.write(f"**to_watch_list.csv:** {len(st.session_state.get('to_watch', []))} movies")
-st.sidebar.write(f"**disliked_list.csv:** {len(st.session_state.get('disliked', []))} movies")
+# ====================== BACKUP & RESTORE (NEW) ======================
+st.sidebar.subheader("💾 Backup & Restore")
 
-if st.sidebar.button("🔄 Reload from Saved Files"):
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    if st.button("📥 Download Watched"):
+        if len(st.session_state.watched) > 0:
+            st.download_button("Download watched_list.csv", 
+                             st.session_state.watched.to_csv(index=False), 
+                             "watched_list.csv", "text/csv")
+        else:
+            st.warning("No data to download")
+with col2:
+    if st.button("📥 Download To Watch"):
+        if len(st.session_state.to_watch) > 0:
+            st.download_button("Download to_watch_list.csv", 
+                             st.session_state.to_watch.to_csv(index=False), 
+                             "to_watch_list.csv", "text/csv")
+        else:
+            st.warning("No data to download")
+
+if st.sidebar.button("📥 Download Disliked"):
+    if len(st.session_state.disliked) > 0:
+        st.download_button("Download disliked_list.csv", 
+                         st.session_state.disliked.to_csv(index=False), 
+                         "disliked_list.csv", "text/csv")
+    else:
+        st.warning("No data to download")
+
+# Restore from uploaded files
+st.sidebar.subheader("📤 Restore from Backup")
+uploaded_watched = st.sidebar.file_uploader("Upload watched_list.csv", type="csv", key="restore_watched")
+if uploaded_watched:
+    st.session_state.watched = pd.read_csv(uploaded_watched)
+    save_list(st.session_state.watched, WATCHED_FILE)
+    st.sidebar.success("✅ Watched list restored!")
+    st.rerun()
+
+uploaded_to_watch = st.sidebar.file_uploader("Upload to_watch_list.csv", type="csv", key="restore_to_watch")
+if uploaded_to_watch:
+    st.session_state.to_watch = pd.read_csv(uploaded_to_watch)
+    save_list(st.session_state.to_watch, TO_WATCH_FILE)
+    st.sidebar.success("✅ To Watch list restored!")
+    st.rerun()
+
+uploaded_disliked = st.sidebar.file_uploader("Upload disliked_list.csv", type="csv", key="restore_disliked")
+if uploaded_disliked:
+    st.session_state.disliked = pd.read_csv(uploaded_disliked)
+    save_list(st.session_state.disliked, DISLIKED_FILE)
+    st.sidebar.success("✅ Disliked list restored!")
+    st.rerun()
+
+# ====================== FILE STATUS ======================
+st.sidebar.subheader("📁 Current Data")
+st.sidebar.write(f"**Watched:** {len(st.session_state.get('watched', []))} movies")
+st.sidebar.write(f"**To Watch:** {len(st.session_state.get('to_watch', []))} movies")
+st.sidebar.write(f"**Disliked:** {len(st.session_state.get('disliked', []))} movies")
+
+if st.sidebar.button("🔄 Reload from Files"):
     st.session_state.watched = load_list(WATCHED_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
     st.session_state.to_watch = load_list(TO_WATCH_FILE, ['title', 'year', 'matched_id', 'genre', 'poster_path'])
     st.session_state.disliked = load_list(DISLIKED_FILE, ['title', 'year', 'matched_id', 'genre'])
-    st.toast("Reloaded from files", icon="🔄")
+    st.toast("Reloaded", icon="🔄")
     st.rerun()
 
 # Load on startup
@@ -665,4 +717,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("File status now visible in sidebar")
+st.sidebar.caption("Backup & Restore tools added")
