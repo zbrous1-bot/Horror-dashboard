@@ -48,6 +48,10 @@ else:
     </style>
     """, unsafe_allow_html=True)
 
+# ====================== INITIALIZE GLOBAL SEARCH (FIX) ======================
+if 'global_search' not in st.session_state:
+    st.session_state.global_search = ""
+
 # ====================== TMDB API KEY ======================
 KEY_FILE = "tmdb_key.txt"
 
@@ -339,7 +343,7 @@ if uploaded:
 watched_count = len(st.session_state.watched)
 to_watch_count = len(st.session_state.to_watch)
 
-# ====================== TABS (Back to 3) ======================
+# ====================== TABS ======================
 tab1, tab2, tab3 = st.tabs([
     "🎯 Recommendations",
     f"📝 To Watch ({to_watch_count})",
@@ -496,6 +500,7 @@ with tab1:
         
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
+        # FIXED: Safe check for global_search
         if st.session_state.global_search:
             recs = recs[recs['title'].str.contains(st.session_state.global_search, case=False, na=False)]
             st.caption(f"🔍 Showing results for: **{st.session_state.global_search}** ({len(recs)} found)")
@@ -882,4 +887,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Removed Poster Wall • Regular feed always visible")
+st.sidebar.caption("Fixed global_search error")
