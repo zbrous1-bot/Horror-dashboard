@@ -48,7 +48,7 @@ else:
     </style>
     """, unsafe_allow_html=True)
 
-# ====================== INITIALIZE GLOBAL SEARCH (FIX) ======================
+# ====================== INITIALIZE GLOBAL SEARCH ======================
 if 'global_search' not in st.session_state:
     st.session_state.global_search = ""
 
@@ -86,20 +86,13 @@ def tmdb_request(endpoint, params=None):
 def get_movie_details(movie_id):
     return tmdb_request(f"/movie/{movie_id}", {"append_to_response": "credits,external_ids"})
 
-# ====================== LOAD MOVIES ======================
+# ====================== LOAD MOVIES (with adult filter) ======================
 @st.cache_data(ttl=3600)
 def load_movies():
     genres = {
-        27: "Horror", 
-        878: "SciFi", 
-        53: "Thriller",
-        28: "Action",
-        12: "Adventure",
-        9648: "Mystery",
-        14: "Fantasy",
-        80: "Crime",
-        18: "Drama",
-        35: "Comedy"
+        27: "Horror", 878: "SciFi", 53: "Thriller",
+        28: "Action", 12: "Adventure", 9648: "Mystery",
+        14: "Fantasy", 80: "Crime", 18: "Drama", 35: "Comedy"
     }
     all_movies = []
     for genre_id, genre_name in genres.items():
@@ -109,14 +102,12 @@ def load_movies():
                 "sort_by": "popularity.desc",
                 "vote_count.gte": 30,
                 "page": page,
-                "include_adult": "false"          # ← This removes pornographic films
+                "include_adult": "false"
             })
             if data and 'results' in data:
                 for m in data['results']:
-                    # Extra safety filter
                     title = (m.get('title') or m.get('original_title') or "").lower()
                     overview = (m.get('overview') or "").lower()
-                    
                     bad_keywords = ["porn", "xxx", "erotic", "adult", "nude", "sex tape", "playboy"]
                     if any(kw in title or kw in overview for kw in bad_keywords):
                         continue
@@ -134,6 +125,8 @@ def load_movies():
     df = df.dropna(subset=['title'])
     df = df.drop_duplicates(subset=['title'])
     return df
+
+movies_df = load_movies()
 
 # ====================== PERSISTENT LISTS ======================
 WATCHED_FILE = "watched_list.csv"
@@ -379,7 +372,12 @@ def get_genre_color(genre):
 with tab1:
     st.header("🎯 Recommendations For You")
     
-    # === IMPROVED MOVIE MOOD SELECTOR ===
+    # === DEFINE THESE VARIABLES FIRST ===
+    watched_titles = st.session_state.watched['title'].tolist() if len(st.session_state.watched) > 0 else []
+    disliked_titles = st.session_state.disliked['title'].tolist() if len(st.session_state.disliked) > 0 else []
+    to_watch_titles = st.session_state.to_watch['title'].tolist() if len(st.session_state.to_watch) > 0 else []
+    
+    # === MOVIE MOOD SELECTOR ===
     st.subheader("😌 How are you feeling tonight?")
     
     mood_options = {
@@ -416,19 +414,11 @@ with tab1:
         keywords = mood_data["keywords"]
         target_genres = mood_data["genres"]
         
-        # Filter by genre first
         genre_filtered = movies_df[movies_df['genre'].isin(target_genres)]
-        
-        # Then filter by keywords in overview
         keyword_mask = genre_filtered['overview'].str.contains('|'.join(keywords), case=False, na=False)
         mood_recs = genre_filtered[keyword_mask]
         
-        # Remove already watched/disliked/to watch
-        mood_recs = mood_recs[~mood_recs['title'].isin(
-            st.session_state.watched['title'].tolist() + 
-            st.session_state.disliked['title'].tolist() + 
-            st.session_state.to_watch['title'].tolist()
-        )]
+        mood_recs = mood_recs[~mood_recs['title'].isin(watched_titles + disliked_titles + to_watch_titles)]
         
         st.session_state.mood_recommendations = mood_recs.head(10).to_dict('records')
         st.rerun()
@@ -461,7 +451,7 @@ with tab1:
     
     st.divider()
     
-    # === IMPROVED "WHAT TO WATCH TONIGHT?" SMART PICKER ===
+    # === WHAT TO WATCH TONIGHT? SMART PICKER ===
     with st.expander("🎯 What to Watch Tonight? (Smart Picker)", expanded=False):
         st.write("Answer a few questions and I'll intelligently pick the best movie for you!")
         
@@ -476,7 +466,6 @@ with tab1:
         if st.button("🎲 Find My Perfect Movie", width='stretch'):
             filtered = movies_df.copy()
             
-            # Mood-based filtering
             if "Horror" in mood_choice:
                 filtered = filtered[filtered['overview'].str.contains("horror|scary|ghost|demon|supernatural", case=False, na=False)]
             elif "Funny" in mood_choice:
@@ -490,33 +479,21 @@ with tab1:
             elif "Thought-provoking" in mood_choice:
                 filtered = filtered[filtered['overview'].str.contains("philosophical|deep|thought|existential|moral", case=False, na=False)]
             
-            # Remove already watched/disliked/to watch
-            filtered = filtered[~filtered['title'].isin(
-                st.session_state.watched['title'].tolist() + 
-                st.session_state.disliked['title'].tolist() + 
-                st.session_state.to_watch['title'].tolist()
-            )]
+            filtered = filtered[~filtered['title'].isin(watched_titles + disliked_titles + to_watch_titles)]
             
             if len(filtered) > 0:
-                # Add scoring
                 filtered = filtered.copy()
                 filtered['score'] = 0
-                
-                # Boost newer movies
                 filtered.loc[filtered['year'].astype(float) >= 2015, 'score'] += 2
                 filtered.loc[filtered['year'].astype(float) >= 2020, 'score'] += 1
-                
-                # Boost higher rated movies
                 filtered.loc[filtered['vote_average'] >= 7.0, 'score'] += 3
                 filtered.loc[filtered['vote_average'] >= 7.5, 'score'] += 2
                 
-                # Time-based filtering (approximate runtime)
                 if "Short" in time_choice:
-                    filtered = filtered[filtered['vote_average'] > 6.0]  # Prefer better movies for short time
+                    filtered = filtered[filtered['vote_average'] > 6.0]
                 elif "Long" in time_choice:
-                    filtered.loc[filtered['vote_average'] >= 7.0, 'score'] += 2  # Reward quality for long watches
+                    filtered.loc[filtered['vote_average'] >= 7.0, 'score'] += 2
                 
-                # Pick top 3
                 top_picks = filtered.sort_values('score', ascending=False).head(3)
                 st.session_state.smart_picks = top_picks.to_dict('records')
                 st.rerun()
@@ -532,7 +509,7 @@ with tab1:
                 if pd.notna(pick.get('poster_path')):
                     st.image(f"https://image.tmdb.org/t/p/w200{pick['poster_path']}", width=90)
             with col2:
-                st.markdown(f"**{pick['title']}** ({pick['year']}) — Score: {pick.get('score', 0)}")
+                st.markdown(f"**{pick['title']}** ({pick['year']})")
                 st.caption(pick['overview'][:160] + "...")
                 
                 col_a, col_b = st.columns(2)
@@ -574,10 +551,6 @@ with tab1:
     if len(st.session_state.watched) == 0:
         st.warning("Add some watched movies first!")
     else:
-        watched_titles = st.session_state.watched['title'].tolist()
-        disliked_titles = st.session_state.disliked['title'].tolist() if len(st.session_state.disliked) > 0 else []
-        to_watch_titles = st.session_state.to_watch['title'].tolist() if len(st.session_state.to_watch) > 0 else []
-        
         recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
         
         if st.session_state.global_search:
@@ -966,4 +939,4 @@ with tab3:
     else:
         st.info("No movies match your search.")
 
-st.sidebar.caption("Fixed global_search error")
+st.sidebar.caption("Full clean version - Mood & Smart Picker improved")
