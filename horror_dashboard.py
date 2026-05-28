@@ -4,11 +4,10 @@ import requests
 import os
 import random
 from thefuzz import process, fuzz
-from collections import Counter
 
 st.set_page_config(page_title="Brous Movie Dashboard", page_icon="🎥", layout="wide")
 
-# ====================== MOBILE-FRIENDLY CSS ======================
+# ====================== MOBILE CSS ======================
 st.markdown("""
 <style>
     @media (max-width: 768px) {
@@ -24,7 +23,6 @@ if 'night_mode' not in st.session_state:
     st.session_state.night_mode = False
 
 night_mode = st.sidebar.checkbox("🌙 Night Mode", value=st.session_state.night_mode, key="night_toggle")
-
 if night_mode != st.session_state.night_mode:
     st.session_state.night_mode = night_mode
     st.rerun()
@@ -35,17 +33,15 @@ if st.session_state.night_mode:
         .stApp { background-color: #0e1117; color: #fafafa; }
         .stSidebar { background-color: #161b22; }
         .stButton button { background-color: #21262d; color: #fafafa; border: 1px solid #30363d; }
-        .stButton button:hover { background-color: #30363d; border-color: #58a6ff; }
     </style>
     """, unsafe_allow_html=True)
 
-# ====================== INITIALIZE GLOBAL SEARCH ======================
+# ====================== GLOBAL SEARCH ======================
 if 'global_search' not in st.session_state:
     st.session_state.global_search = ""
 
-# ====================== TMDB API KEY ======================
+# ====================== TMDB KEY ======================
 KEY_FILE = "tmdb_key.txt"
-
 if not os.path.exists(KEY_FILE):
     st.session_state.tmdb_key = ""
 else:
@@ -77,7 +73,7 @@ def tmdb_request(endpoint, params=None):
 def get_movie_details(movie_id):
     return tmdb_request(f"/movie/{movie_id}", {"append_to_response": "credits,external_ids"})
 
-# ====================== LOAD MOVIES (WITH FOREIGN FILTER) ======================
+# ====================== LOAD MOVIES ======================
 @st.cache_data(ttl=3600)
 def load_movies():
     genres = {
@@ -94,7 +90,7 @@ def load_movies():
                 "vote_count.gte": 30,
                 "page": page,
                 "include_adult": "false",
-                "with_original_language": "en"   # ← ONLY ENGLISH MOVIES
+                "with_original_language": "en"
             })
             if data and 'results' in data:
                 for m in data['results']:
@@ -111,8 +107,7 @@ def load_movies():
                         'vote_average': m.get('vote_average'),
                         'poster_path': m.get('poster_path'),
                         'id': m.get('id'),
-                        'genre': genre_name,
-                        'original_language': m.get('original_language', 'en')
+                        'genre': genre_name
                     })
     df = pd.DataFrame(all_movies)
     df = df.dropna(subset=['title'])
@@ -133,6 +128,8 @@ def load_list(file, columns):
             for col in columns:
                 if col not in df.columns:
                     df[col] = None
+            df = df.dropna(subset=['title'])
+            df = df[df['title'].astype(str).str.strip() != '']
             return df
         except:
             return pd.DataFrame(columns=columns)
@@ -145,15 +142,15 @@ def save_list(df, file):
 st.sidebar.subheader("💾 Backup & Restore")
 
 if st.sidebar.button("📥 Download Watched"):
-    if len(st.session_state.watched) > 0:
+    if len(st.session_state.get('watched', [])) > 0:
         st.download_button("Download watched_list.csv", st.session_state.watched.to_csv(index=False), "watched_list.csv", "text/csv")
 
 if st.sidebar.button("📥 Download To Watch"):
-    if len(st.session_state.to_watch) > 0:
+    if len(st.session_state.get('to_watch', [])) > 0:
         st.download_button("Download to_watch_list.csv", st.session_state.to_watch.to_csv(index=False), "to_watch_list.csv", "text/csv")
 
 if st.sidebar.button("📥 Download Disliked"):
-    if len(st.session_state.disliked) > 0:
+    if len(st.session_state.get('disliked', [])) > 0:
         st.download_button("Download disliked_list.csv", st.session_state.disliked.to_csv(index=False), "disliked_list.csv", "text/csv")
 
 # Restore
@@ -198,33 +195,17 @@ if st.sidebar.button("🔄 Reload from Files"):
     st.toast("Reloaded from files", icon="🔄")
     st.rerun()
 
-# Load on startup
+# ====================== LOAD DATA ON STARTUP ======================
 if 'watched' not in st.session_state:
     st.session_state.watched = load_list(WATCHED_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
-st.session_state.watched = st.session_state.watched.dropna(subset=['title'])
-st.session_state.watched = st.session_state.watched[st.session_state.watched['title'].astype(str).str.strip() != '']
 
 if 'to_watch' not in st.session_state:
     st.session_state.to_watch = load_list(TO_WATCH_FILE, ['title', 'year', 'matched_id', 'genre', 'poster_path'])
+
 if 'disliked' not in st.session_state:
     st.session_state.disliked = load_list(DISLIKED_FILE, ['title', 'year', 'matched_id', 'genre'])
 
-def search_movie_on_tmdb(title):
-    data = tmdb_request("/search/movie", {"query": title, "page": 1})
-    if data and 'results' in data and data['results']:
-        best = data['results'][0]
-        return {
-            'title': best.get('title') or best.get('original_title'),
-            'year': best.get('release_date', '')[:4] if best.get('release_date') else None,
-            'overview': best.get('overview', ''),
-            'vote_average': best.get('vote_average'),
-            'poster_path': best.get('poster_path'),
-            'id': best.get('id'),
-            'genre': 'Mixed'
-        }
-    return None
-
-# ====================== PROFESSIONAL HEADER ======================
+# ====================== HEADER ======================
 st.markdown("""
 <div style="background: linear-gradient(90deg, #1e293b, #334155); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #475569;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -242,37 +223,14 @@ st.markdown("""
 # ====================== STATS ======================
 st.subheader("📊 Your Stats")
 
-stats_container = st.container()
-with stats_container:
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-        <div style="background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #475569; text-align: center;">
-            <div style="font-size: 32px; margin-bottom: 8px;">🎬</div>
-            <div style="font-size: 28px; font-weight: bold; color: #60a5fa;">{}</div>
-            <div style="color: #94a3b8; font-size: 14px;">Movies Watched</div>
-        </div>
-        """.format(len(st.session_state.watched)), unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown("""
-        <div style="background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #475569; text-align: center;">
-            <div style="font-size: 32px; margin-bottom: 8px;">📝</div>
-            <div style="font-size: 28px; font-weight: bold; color: #60a5fa;">{}</div>
-            <div style="color: #94a3b8; font-size: 14px;">To Watch</div>
-        </div>
-        """.format(len(st.session_state.to_watch)), unsafe_allow_html=True)
-    
-    with col3:
-        loved_count = len(st.session_state.watched[st.session_state.watched['rating'] == 5.0])
-        st.markdown("""
-        <div style="background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #475569; text-align: center;">
-            <div style="font-size: 32px; margin-bottom: 8px;">❤️</div>
-            <div style="font-size: 28px; font-weight: bold; color: #f87171;">{}</div>
-            <div style="color: #94a3b8; font-size: 14px;">Loved / Disliked</div>
-        </div>
-        """.format(f"{loved_count} / {len(st.session_state.disliked)}"), unsafe_allow_html=True)
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Movies Watched", len(st.session_state.watched))
+with col2:
+    st.metric("To Watch", len(st.session_state.to_watch))
+with col3:
+    loved = len(st.session_state.watched[st.session_state.watched['rating'] == 5.0])
+    st.metric("Loved / Disliked", f"{loved} / {len(st.session_state.disliked)}")
 
 st.divider()
 
@@ -295,7 +253,6 @@ if uploaded:
 
         current_titles = set(st.session_state.watched['title'].tolist())
         new_movies = []
-        skipped = []
 
         for idx, row in user_df.iterrows():
             title = str(row['title']).strip()
@@ -318,8 +275,6 @@ if uploaded:
                     'genre': best.get('genre', 'Mixed'),
                     'poster_path': best.get('poster_path')
                 })
-            else:
-                skipped.append(title)
 
         if new_movies:
             new_df = pd.DataFrame(new_movies)
@@ -330,8 +285,6 @@ if uploaded:
             save_list(st.session_state.disliked, DISLIKED_FILE)
             
             st.sidebar.success(f"✅ Added {len(new_movies)} new movies!")
-            if skipped:
-                st.sidebar.warning(f"Skipped {len(skipped)} movies")
             st.rerun()
         else:
             st.sidebar.info("No new movies to add")
@@ -350,7 +303,7 @@ tab1, tab2, tab3 = st.tabs([
     f"📋 Watched ({watched_count})"
 ])
 
-# ====================== GENRE COLOR MAPPING ======================
+# ====================== GENRE COLORS ======================
 genre_colors = {
     "Horror": "#ff6b6b", "SciFi": "#4ecdc4", "Thriller": "#a855f7",
     "Action": "#f97316", "Adventure": "#eab308", "Mystery": "#8b5cf6",
@@ -375,114 +328,170 @@ with tab1:
         recs = recs[recs['title'].str.contains(st.session_state.global_search, case=False, na=False)]
         st.caption(f"🔍 Showing results for: **{st.session_state.global_search}** ({len(recs)} found)")
     
-    # ====================== IMPROVED OVERALL ALGORITHM ======================
     if len(st.session_state.watched) > 0:
-        watched_genres = st.session_state.watched['genre'].value_counts().to_dict()
-        liked_genres = st.session_state.watched[st.session_state.watched['rating'] == 5.0]['genre'].value_counts().to_dict()
-        disliked_genres = st.session_state.disliked['genre'].value_counts().to_dict() if len(st.session_state.disliked) > 0 else {}
-        genre_avg_rating = st.session_state.watched.groupby('genre')['rating'].mean().to_dict()
-        
-        scores = []
-        for idx, row in recs.iterrows():
-            score = 0
-            genre = row.get('genre', 'Mixed')
-            
-            if genre in watched_genres:
-                score += watched_genres[genre] * 1.5
-            if genre in liked_genres:
-                score += liked_genres[genre] * 2.5
-            if genre in disliked_genres:
-                score -= disliked_genres[genre] * 2.0
-            if genre in genre_avg_rating:
-                score += (genre_avg_rating[genre] - 3) * 1.5
-            if pd.notna(row.get('vote_average')):
-                score += (row['vote_average'] - 6) * 0.8
-            if pd.notna(row.get('year')):
-                try:
-                    year = int(row['year'])
-                    if year >= 2020:
-                        score += 2.0
-                    elif year >= 2015:
-                        score += 1.0
-                except:
-                    pass
-            if genre in watched_genres:
-                if watched_genres[genre] > 8:
-                    score -= 3.0
-            
-            scores.append(max(0, score))
-        
-        recs['personal_score'] = scores
-        recs = recs.sort_values('personal_score', ascending=False)
-        
-        similar_movies = []
-        sample_watched = st.session_state.watched.sample(min(5, len(st.session_state.watched)))
-        
-        for _, watched_row in sample_watched.iterrows():
-            similar_data = tmdb_request(f"/movie/{watched_row['matched_id']}/similar", {"page": 1})
-            if similar_data and 'results' in similar_data:
-                for m in similar_data['results'][:4]:
-                    similar_movies.append({
-                        'title': m.get('title') or m.get('original_title'),
-                        'year': m.get('release_date', '')[:4] if m.get('release_date') else None,
-                        'overview': m.get('overview', ''),
-                        'vote_average': m.get('vote_average'),
-                        'poster_path': m.get('poster_path'),
-                        'id': m.get('id'),
-                        'genre': 'Mixed'
-                    })
-        
-        if similar_movies:
+        random_watched = st.session_state.watched.sample(1).iloc[0]
+        similar_data = tmdb_request(f"/movie/{random_watched['matched_id']}/similar", {"page": 1})
+        if similar_data and 'results' in similar_data:
+            similar_movies = []
+            for m in similar_data['results'][:10]:
+                similar_movies.append({
+                    'title': m.get('title') or m.get('original_title'),
+                    'year': m.get('release_date', '')[:4] if m.get('release_date') else None,
+                    'overview': m.get('overview', ''),
+                    'vote_average': m.get('vote_average'),
+                    'poster_path': m.get('poster_path'),
+                    'id': m.get('id'),
+                    'genre': 'Mixed'
+                })
             similar_df = pd.DataFrame(similar_movies)
-            similar_df = similar_df[~similar_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)]
             recs = pd.concat([recs, similar_df]).drop_duplicates(subset=['title'])
-            recs = recs.sort_values('personal_score', ascending=False)
     
-    # ====================== REGULAR RECOMMENDATIONS FEED ======================
+    # Mood Selector
+    st.subheader("😌 How are you feeling tonight?")
+    
+    mood_options = {
+        "Feeling spooky 👻": ["supernatural", "ghost", "haunted", "demon", "spirit", "possession", "witch", "curse"],
+        "Want something funny 😂": ["funny", "comedy", "humor", "hilarious", "laugh", "sarcastic", "witty"],
+        "Mind-bending night 🌀": ["mind-bending", "twist", "psychological", "reality", "surreal", "dream"],
+        "Cozy horror 🕯️": ["slow burn", "atmospheric", "folk", "rural", "quiet", "eerie", "dread"],
+        "Action-packed 🔥": ["action", "fight", "chase", "explosion", "shootout", "intense", "battle"],
+        "Cosmic horror 🌌": ["cosmic", "lovecraft", "eldritch", "space", "alien", "void", "ancient"]
+    }
+    
+    selected_mood = st.selectbox("Choose your mood", list(mood_options.keys()), index=0)
+    
+    if st.button("🎯 Get Recommendations for this Mood", width='stretch'):
+        keywords = mood_options[selected_mood]
+        mood_recs = recs[recs['overview'].str.contains('|'.join(keywords), case=False, na=False)]
+        st.session_state.mood_recommendations = mood_recs.head(8).to_dict('records')
+        st.rerun()
+    
+    if 'mood_recommendations' in st.session_state:
+        st.subheader(f"Recommendations for: {selected_mood}")
+        for movie in st.session_state.mood_recommendations:
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                if pd.notna(movie.get('poster_path')):
+                    st.image(f"https://image.tmdb.org/t/p/w200{movie['poster_path']}", width=80)
+            with col2:
+                st.markdown(f"**{movie['title']}** ({movie['year']})")
+                st.caption(movie['overview'][:140] + "...")
+                if st.button(f"➕ Add to To Watch", key=f"mood_add_{movie['id']}"):
+                    new_to_watch = pd.DataFrame([{
+                        'title': movie['title'],
+                        'year': movie['year'],
+                        'matched_id': movie.get('id', 999999),
+                        'genre': movie.get('genre', 'Mixed'),
+                        'poster_path': movie.get('poster_path')
+                    }])
+                    st.session_state.to_watch = pd.concat([st.session_state.to_watch, new_to_watch]).drop_duplicates(subset=['title'])
+                    save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                    st.toast(f"Added {movie['title']} to To Watch!", icon="📝")
+                    st.rerun()
+        if st.button("Clear Mood Recommendations"):
+            del st.session_state.mood_recommendations
+            st.rerun()
+    
+    st.divider()
+    
+    # Smart Picker
+    with st.expander("🎯 What to Watch Tonight? (Smart Picker)", expanded=False):
+        st.write("Answer a few questions and I'll pick the best movie for you!")
+        
+        time_choice = st.radio("How much time do you have?", 
+                              ["Short (< 90 min)", "Medium (90-120 min)", "Long (> 120 min)"], 
+                              horizontal=True)
+        
+        mood_choice = st.selectbox("What kind of mood are you in?", 
+                                  ["Scary / Horror", "Funny / Light", "Thought-provoking", 
+                                   "Action / Thrilling", "Cozy / Atmospheric", "Mind-bending"])
+        
+        if st.button("🎲 Find My Perfect Movie", width='stretch'):
+            filtered = recs.copy()
+            
+            if "Horror" in mood_choice:
+                filtered = filtered[filtered['overview'].str.contains("horror|scary|ghost|demon|supernatural", case=False, na=False)]
+            elif "Funny" in mood_choice:
+                filtered = filtered[filtered['overview'].str.contains("funny|comedy|humor|laugh|hilarious", case=False, na=False)]
+            elif "Action" in mood_choice:
+                filtered = filtered[filtered['overview'].str.contains("action|fight|chase|explosion|shootout", case=False, na=False)]
+            elif "Mind-bending" in mood_choice:
+                filtered = filtered[filtered['overview'].str.contains("mind|twist|psychological|reality|surreal", case=False, na=False)]
+            elif "Cozy" in mood_choice:
+                filtered = filtered[filtered['overview'].str.contains("slow burn|atmospheric|folk|rural|quiet", case=False, na=False)]
+            elif "Thought-provoking" in mood_choice:
+                filtered = filtered[filtered['overview'].str.contains("philosophical|deep|thought|existential|moral", case=False, na=False)]
+            
+            if len(filtered) > 0:
+                filtered = filtered.copy()
+                filtered['score'] = 0
+                filtered.loc[filtered['year'].astype(float) >= 2015, 'score'] += 2
+                filtered.loc[filtered['year'].astype(float) >= 2020, 'score'] += 1
+                filtered.loc[filtered['vote_average'] >= 7.0, 'score'] += 3
+                filtered.loc[filtered['vote_average'] >= 7.5, 'score'] += 2
+                
+                if "Short" in time_choice:
+                    filtered = filtered[filtered['vote_average'] > 6.0]
+                elif "Long" in time_choice:
+                    filtered.loc[filtered['vote_average'] >= 7.0, 'score'] += 2
+                
+                top_picks = filtered.sort_values('score', ascending=False).head(3)
+                st.session_state.smart_picks = top_picks.to_dict('records')
+                st.rerun()
+            else:
+                st.warning("Couldn't find a good match. Try different options!")
+    
+    if 'smart_picks' in st.session_state:
+        st.subheader("🎯 Here are your top picks:")
+        
+        for i, pick in enumerate(st.session_state.smart_picks):
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                if pd.notna(pick.get('poster_path')):
+                    st.image(f"https://image.tmdb.org/t/p/w200{pick['poster_path']}", width=90)
+            with col2:
+                st.markdown(f"**{pick['title']}** ({pick['year']})")
+                st.caption(pick['overview'][:160] + "...")
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button(f"➕ Add to To Watch", key=f"smart_add_{i}"):
+                        new_to_watch = pd.DataFrame([{
+                            'title': pick['title'],
+                            'year': pick['year'],
+                            'matched_id': pick.get('id', 999999),
+                            'genre': pick.get('genre', 'Mixed'),
+                            'poster_path': pick.get('poster_path')
+                        }])
+                        st.session_state.to_watch = pd.concat([st.session_state.to_watch, new_to_watch]).drop_duplicates(subset=['title'])
+                        save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                        del st.session_state.smart_picks
+                        st.rerun()
+                with col_b:
+                    if st.button(f"❤️ Loved it", key=f"smart_love_{i}"):
+                        new_entry = pd.DataFrame([{
+                            'title': pick['title'],
+                            'year': pick['year'],
+                            'rating': 5.0,
+                            'matched_id': pick.get('id', 999999),
+                            'genre': pick.get('genre', 'Mixed'),
+                            'poster_path': pick.get('poster_path')
+                        }])
+                        st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                        save_list(st.session_state.watched, WATCHED_FILE)
+                        del st.session_state.smart_picks
+                        st.rerun()
+        
+        if st.button("Clear Picks"):
+            del st.session_state.smart_picks
+            st.rerun()
+    
+    st.divider()
+    
+    # Regular Recommendations
     if len(st.session_state.watched) == 0:
         st.warning("Add some watched movies first!")
     else:
-        vibe_options = [
-            "Found Footage", "Supernatural", "Slasher", "Psychological", 
-            "Alien / Space", "Dystopian", "Serial Killer", "Mind-Bending",
-            "Gore", "Jump Scare", "Slow Burn", "Body Horror", 
-            "Cosmic Horror", "Zombie", "Vampire", "Post-Apocalyptic",
-            "Time Travel", "AI / Robot", "Survival", "Folk Horror",
-            "Funny", "Action"
-        ]
-        selected_vibes = st.multiselect("Filter by vibe (updates instantly)", vibe_options, default=[], key="vibe_filter")
-        
-        if selected_vibes:
-            keyword_map = {
-                "Found Footage": ["found footage", "handheld"],
-                "Supernatural": ["supernatural", "ghost", "haunted", "demon"],
-                "Slasher": ["slasher", "killer", "blood"],
-                "Psychological": ["psychological", "slow burn", "mind"],
-                "Alien / Space": ["alien", "space", "planet", "sci-fi"],
-                "Dystopian": ["dystopian", "future", "society"],
-                "Serial Killer": ["serial", "killer", "murder"],
-                "Mind-Bending": ["mind-bending", "twist", "reality"],
-                "Gore": ["gore", "blood", "graphic"],
-                "Jump Scare": ["jump scare", "sudden"],
-                "Slow Burn": ["slow burn", "atmospheric"],
-                "Body Horror": ["body horror", "transformation"],
-                "Cosmic Horror": ["cosmic", "lovecraft", "eldritch"],
-                "Zombie": ["zombie", "undead"],
-                "Vampire": ["vampire", "dracula"],
-                "Post-Apocalyptic": ["post-apocalyptic", "wasteland"],
-                "Time Travel": ["time travel", "time loop"],
-                "AI / Robot": ["ai", "robot", "artificial"],
-                "Survival": ["survival", "stranded"],
-                "Folk Horror": ["folk", "cult", "rural"],
-                "Funny": ["funny", "comedy", "humor", "laugh", "hilarious"],
-                "Action": ["action", "fight", "chase", "explosion", "shootout", "intense"]
-            }
-            mask = pd.Series(False, index=recs.index)
-            for vibe in selected_vibes:
-                for kw in keyword_map.get(vibe, []):
-                    mask |= recs['overview'].str.contains(kw, case=False, na=False)
-            recs = recs[mask]
-        
         recs = recs.head(15)
         
         for idx, row in recs.iterrows():
@@ -597,3 +606,215 @@ with tab1:
                         st.caption("Could not load additional details.")
                 
                 st.divider()
+
+# ====================== TO WATCH TAB ======================
+with tab2:
+    st.header("📝 To Watch List")
+    
+    if len(st.session_state.to_watch) > 0:
+        if st.button("🎲 Pick Random Movie", width='stretch'):
+            random_movie = st.session_state.to_watch.sample(1).iloc[0]
+            st.session_state.random_pick = random_movie
+            st.rerun()
+        
+        if 'random_pick' in st.session_state:
+            rm = st.session_state.random_pick
+            st.success(f"🎲 Random Pick: **{rm['title']}** ({rm['year']})")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("❤️ Loved it", key="random_loved"):
+                    new_entry = pd.DataFrame([{
+                        'title': rm['title'],
+                        'year': rm['year'],
+                        'rating': 5.0,
+                        'matched_id': rm.get('matched_id', 999999),
+                        'genre': rm.get('genre', 'Mixed'),
+                        'poster_path': rm.get('poster_path')
+                    }])
+                    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                    save_list(st.session_state.watched, WATCHED_FILE)
+                    st.session_state.to_watch = st.session_state.to_watch[st.session_state.to_watch['title'] != rm['title']]
+                    save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                    del st.session_state.random_pick
+                    st.rerun()
+            with col2:
+                if st.button("👎 Disliked", key="random_disliked"):
+                    new_dislike = pd.DataFrame([{
+                        'title': rm['title'],
+                        'year': rm['year'],
+                        'matched_id': rm.get('matched_id', 999999),
+                        'genre': rm.get('genre', 'Mixed')
+                    }])
+                    st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
+                    save_list(st.session_state.disliked, DISLIKED_FILE)
+                    new_entry = pd.DataFrame([{
+                        'title': rm['title'],
+                        'year': rm['year'],
+                        'rating': None,
+                        'matched_id': rm.get('matched_id', 999999),
+                        'genre': rm.get('genre', 'Mixed'),
+                        'poster_path': rm.get('poster_path')
+                    }])
+                    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                    save_list(st.session_state.watched, WATCHED_FILE)
+                    st.session_state.to_watch = st.session_state.to_watch[st.session_state.to_watch['title'] != rm['title']]
+                    save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                    del st.session_state.random_pick
+                    st.rerun()
+            with col3:
+                if st.button("❌ Cancel", key="random_cancel"):
+                    del st.session_state.random_pick
+                    st.rerun()
+    
+    if len(st.session_state.to_watch) > 0:
+        cols = st.columns(2)
+        for idx, (i, row) in enumerate(st.session_state.to_watch.reset_index(drop=True).iterrows()):
+            col = cols[idx % 2]
+            with col:
+                with st.container():
+                    st.markdown(f"""
+                    <div style="background: #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 16px; border: 1px solid #475569;">
+                    """, unsafe_allow_html=True)
+                    
+                    if pd.notna(row.get('poster_path')):
+                        st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=140)
+                    else:
+                        st.caption("🎬 No poster")
+                    
+                    st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
+                    
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        if st.button("❤️ Loved", key=f"tw_loved_{i}", width='stretch'):
+                            new_entry = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'rating': 5.0,
+                                'matched_id': row.get('matched_id', 999999),
+                                'genre': row.get('genre', 'Mixed'),
+                                'poster_path': row.get('poster_path')
+                            }])
+                            st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.watched, WATCHED_FILE)
+                            st.session_state.to_watch = st.session_state.to_watch.drop(i)
+                            save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                            st.rerun()
+                    with col_b:
+                        if st.button("👎 Disliked", key=f"tw_disliked_{i}", width='stretch'):
+                            new_dislike = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'matched_id': row.get('matched_id', 999999),
+                                'genre': row.get('genre', 'Mixed')
+                            }])
+                            st.session_state.disliked = pd.concat([st.session_state.disliked, new_dislike]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.disliked, DISLIKED_FILE)
+                            new_entry = pd.DataFrame([{
+                                'title': row['title'],
+                                'year': row['year'],
+                                'rating': None,
+                                'matched_id': row.get('matched_id', 999999),
+                                'genre': row.get('genre', 'Mixed'),
+                                'poster_path': row.get('poster_path')
+                            }])
+                            st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+                            save_list(st.session_state.watched, WATCHED_FILE)
+                            st.session_state.to_watch = st.session_state.to_watch.drop(i)
+                            save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                            st.rerun()
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.info("Your To Watch list is empty. Add movies from Recommendations!")
+
+# ====================== WATCHED TAB ======================
+with tab3:
+    st.header("📋 Watched Movies")
+    
+    col1, col2 = st.columns([3, 2])
+    with col1:
+        search_term = st.text_input("🔍 Search watched movies", key="watched_search")
+    with col2:
+        sort_option = st.selectbox("Sort by", ["Recently Added", "Year (Newest)", "Year (Oldest)", "Rating (High to Low)", "Title A-Z"], key="watched_sort")
+
+    all_genres = sorted(st.session_state.watched['genre'].dropna().unique().tolist())
+    selected_genres = st.multiselect("Filter by Genre", all_genres, default=[], key="watched_genre_filter")
+
+    filtered_watched = st.session_state.watched.copy()
+    
+    if selected_genres:
+        filtered_watched = filtered_watched[filtered_watched['genre'].isin(selected_genres)]
+    
+    if search_term:
+        filtered_watched = filtered_watched[filtered_watched['title'].str.contains(search_term, case=False, na=False)]
+    
+    if sort_option == "Year (Newest)":
+        filtered_watched = filtered_watched.sort_values('year', ascending=False)
+    elif sort_option == "Year (Oldest)":
+        filtered_watched = filtered_watched.sort_values('year', ascending=True)
+    elif sort_option == "Rating (High to Low)":
+        filtered_watched = filtered_watched.sort_values('rating', ascending=False)
+    elif sort_option == "Title A-Z":
+        filtered_watched = filtered_watched.sort_values('title', ascending=True)
+
+    if len(filtered_watched) > 0:
+        cols = st.columns(2)
+        
+        for idx, (i, row) in enumerate(filtered_watched.reset_index(drop=True).iterrows()):
+            col = cols[idx % 2]
+            
+            with col:
+                with st.container():
+                    st.markdown(f"""
+                    <div style="background: #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 16px; border: 1px solid #475569;">
+                    """, unsafe_allow_html=True)
+                    
+                    if pd.notna(row.get('poster_path')) and str(row.get('poster_path')) != 'None':
+                        st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=90)
+                    else:
+                        st.caption("🎬 No poster")
+                    
+                    title = row.get('title', 'Unknown')
+                    year = int(row['year']) if pd.notna(row.get('year')) else 'N/A'
+                    
+                    is_disliked = row['title'] in st.session_state.disliked['title'].values
+                    is_loved = pd.notna(row.get('rating')) and row['rating'] == 5.0
+                    
+                    if is_loved:
+                        tag = "❤️ <span style='color:#f87171; font-weight:bold;'>Loved</span>"
+                    elif is_disliked:
+                        tag = "👎 <span style='color:#f87171; font-weight:bold;'>Disliked</span>"
+                    else:
+                        tag = ""
+                    
+                    display_genre = row.get('genre', '') if row.get('genre') and row.get('genre') != 'Mixed' else ""
+                    genre_color = get_genre_color(row.get('genre', 'Mixed'))
+                    genre_tag = f"<span style='color: {genre_color}; font-weight: bold;'>[{display_genre}]</span> " if display_genre else ""
+                    
+                    rating_text = f" • ⭐ {row['rating']}" if pd.notna(row.get('rating')) else ""
+                    st.markdown(f"**{genre_tag}{title}** ({year}){rating_text} {tag}", unsafe_allow_html=True)
+                    
+                    if st.button("🗑️ Delete", key=f"del_watched_{title}_{i}", width='stretch'):
+                        mask = st.session_state.watched['title'] == title
+                        if mask.any():
+                            orig_idx = st.session_state.watched[mask].index[0]
+                            st.session_state.watched = st.session_state.watched.drop(orig_idx)
+                            save_list(st.session_state.watched, WATCHED_FILE)
+                            st.rerun()
+                        else:
+                            st.warning("Movie not found")
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.divider()
+        col1, col2 = st.columns(2)
+        col1.metric("Showing", len(filtered_watched))
+        if st.button("Clear All Watched", width='stretch'):
+            st.session_state.watched = pd.DataFrame(columns=['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
+            save_list(st.session_state.watched, WATCHED_FILE)
+            st.rerun()
+    else:
+        st.info("No movies match your search.")
+
+st.sidebar.caption("✅ Clean & Stable Version")
