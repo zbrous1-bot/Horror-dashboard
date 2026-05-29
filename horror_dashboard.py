@@ -1058,18 +1058,20 @@ with tab1:
                     
                     with btn_col1:
                         if st.button("✅ Mark as Watched", key=f"watched_{row.get('id', idx)}", width='stretch'):
-                            # Direct add with default rating for quick action
-                            add_to_watched(row, rating=3)
-                            
-                            # Also remove from To Watch if it's there
-                            if not st.session_state.to_watch.empty:
-                                st.session_state.to_watch = st.session_state.to_watch[
-                                    st.session_state.to_watch['title'] != row.get('title')
-                                ]
-                                save_list(st.session_state.to_watch, TO_WATCH_FILE)
-                            
-                            st.toast(f"Marked {row['title']} as watched", icon="✅")
-                            st.rerun()
+                            with st.popover("Rate this movie"):
+                                rating = get_star_rating_input(key_prefix=f"rec_watched_{row.get('id', idx)}", default=4)
+                                if st.button("Save & Mark Watched", key=f"save_watched_{row.get('id', idx)}"):
+                                    add_to_watched(row, rating=rating)
+                                    
+                                    # Also remove from To Watch if it's there
+                                    if not st.session_state.to_watch.empty:
+                                        st.session_state.to_watch = st.session_state.to_watch[
+                                            st.session_state.to_watch['title'] != row.get('title')
+                                        ]
+                                        save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                                    
+                                    st.toast(f"Marked {row['title']} as watched ({rating}★)", icon="✅")
+                                    st.rerun()
                     
                         if st.button("👎 Disliked", key=f"disliked_{row.get('id', idx)}", width='stretch'):
                             add_to_disliked(row)
