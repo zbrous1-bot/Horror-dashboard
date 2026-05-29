@@ -9,6 +9,21 @@ from thefuzz import process, fuzz
 
 st.set_page_config(page_title="Brous Movie Dashboard", page_icon="🎥", layout="wide")
 
+# ====================== GLOBAL CONSTANTS (defined early for all tabs) ======================
+# This prevents NameError if any tab references them before their original definition point.
+genre_colors = {
+    "Horror": "#ff6b6b", "SciFi": "#4ecdc4", "Thriller": "#a855f7",
+    "Action": "#f97316", "Adventure": "#eab308", "Mystery": "#8b5cf6",
+    "Fantasy": "#ec4899", "Crime": "#ef4444", "Drama": "#06b6d4", "Comedy": "#22c55e",
+    "Mixed": "#6b7280"
+}
+
+def get_genre_color(genre):
+    """Safe helper that always returns a fallback color."""
+    if 'genre_colors' not in globals() or not isinstance(genre_colors, dict):
+        return "#6b7280"
+    return genre_colors.get(genre, "#6b7280")
+
 # ====================== GLOBAL CSS ======================
 st.markdown("""
 <style>
@@ -685,16 +700,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Stats"
 ])
 
-# ====================== GENRE COLORS (defined at top level for use in all tabs) ======================
-genre_colors = {
-    "Horror": "#ff6b6b", "SciFi": "#4ecdc4", "Thriller": "#a855f7",
-    "Action": "#f97316", "Adventure": "#eab308", "Mystery": "#8b5cf6",
-    "Fantasy": "#ec4899", "Crime": "#ef4444", "Drama": "#06b6d4", "Comedy": "#22c55e",
-    "Mixed": "#6b7280"
-}
-
-def get_genre_color(genre):
-    return genre_colors.get(genre, "#6b7280")
+# (genre_colors and get_genre_color are now defined at the very top of the file for safety)
 
 # ====================== RECOMMENDATIONS TAB ======================
 with tab1:
