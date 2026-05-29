@@ -3,6 +3,8 @@ import pandas as pd
 import requests
 import os
 import random
+import json
+import altair as alt
 from thefuzz import process, fuzz
 
 st.set_page_config(page_title="Brous Movie Dashboard", page_icon="🎥", layout="wide")
@@ -14,6 +16,36 @@ st.markdown("""
         .stApp { font-size: 15px; }
         .stButton button { font-size: 15px !important; padding: 12px 16px !important; height: 48px !important; }
         .stTabs [data-baseweb="tab-list"] button { font-size: 15px !important; padding: 10px 12px !important; }
+        
+        /* Better mobile card layout */
+        .movie-card {
+            padding: 12px;
+            margin-bottom: 14px;
+        }
+        
+        /* Make recommendation cards stack better */
+        .movie-card .stColumn {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+        
+        /* Recently watched row - horizontal scroll on mobile */
+        .recently-watched-row {
+            overflow-x: auto;
+            white-space: nowrap;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .recently-watched-row > div {
+            display: inline-block;
+            margin-right: 8px;
+            vertical-align: top;
+        }
+        
+        /* Larger touch targets for mobile */
+        .stButton button {
+            min-height: 44px !important;
+        }
     }
     
     .movie-card {
@@ -30,6 +62,13 @@ st.markdown("""
         transform: translateY(-3px);
         box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
         border-color: #60a5fa;
+    }
+    
+    .rec-reason {
+        font-size: 0.8em;
+        color: #94a3b8;
+        font-style: italic;
+        margin-top: 4px;
     }
     
     .stats-card {
@@ -258,43 +297,142 @@ def safe_get_rating(df: pd.DataFrame):
     return int((df['rating'] == 5.0).sum())
 
 
-# ====================== BACKUP & RESTORE ======================
-st.sidebar.subheader("💾 Backup & Restore")
+def get_star_rating_input(key_prefix="rating", default=5):
+    """Nice 1-5 star rating selector."""
+    stars = "★" * 5
+    rating = st.radio(
+        "Your rating",
+        options=[1, 2, 3, 4, 5],
+        index=default - 1,
+        format_func=lambda x: "★" * x + "☆" * (5 - x),
+        horizontal=True,
+        key=f"{key_prefix}_stars"
+    )
+    return rating
 
-if st.sidebar.button("📥 Download Watched"):
-    if len(st.session_state.get('watched', [])) > 0:
-        st.download_button("Download watched_list.csv", st.session_state.watched.to_csv(index=False), "watched_list.csv", "text/csv")
 
-if st.sidebar.button("📥 Download To Watch"):
-    if len(st.session_state.get('to_watch', [])) > 0:
-        st.download_button("Download to_watch_list.csv", st.session_state.to_watch.to_csv(index=False), "to_watch_list.csv", "text/csv")
+# ====================== USER TASTE PROFILE & BETTER RECOMMENDATIONS ======================
 
-if st.sidebar.button("📥 Download Disliked"):
-    if len(st.session_state.get('disliked', [])) > 0:
-        st.download_button("Download disliked_list.csv", st.session_state.disliked.to_csv(index=False), "disliked_list.csv", "text/csv")
+def get_user_genre_preferences():
+    """Calculate user's favorite genres based on watched + loved movies."""
+    if st.session_state.watched.empty:
+        return {}
+    
+    # Give extra weight to movies the user "Loved" (rating == 5.0)
+    loved = st.session_state.watched[st.session_state.watched['rating'] == 5.0]
+    regular = st.session_state.watched[st.session_state.watched['rating'] != 5.0]
+    
+    genre_counts = {}
+    
+    for df, weight in [(loved, 3), (regular, 1)]:
+        for _, row in df.iterrows():
+            genre = row.get('genre', 'Mixed')
+            if genre and genre != 'Mixed':
+                genre_counts[genre] = genre_counts.get(genre, 0) + weight
+    
+    # Normalize to percentages
+    total = sum(genre_counts.values())
+    if total == 0:
+        return {}
+    
+    return {g: round(c / total * 100, 1) for g, c in 
+            sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:5]}
 
-# Restore
-st.sidebar.subheader("📤 Restore Backup")
-up_w = st.sidebar.file_uploader("Upload watched_list.csv", type="csv", key="up_w")
-if up_w:
-    st.session_state.watched = pd.read_csv(up_w)
-    save_list(st.session_state.watched, WATCHED_FILE)
-    st.sidebar.success("✅ Watched restored!")
-    st.rerun()
 
-up_tw = st.sidebar.file_uploader("Upload to_watch_list.csv", type="csv", key="up_tw")
-if up_tw:
-    st.session_state.to_watch = pd.read_csv(up_tw)
-    save_list(st.session_state.to_watch, TO_WATCH_FILE)
-    st.sidebar.success("✅ To Watch restored!")
-    st.rerun()
+def boost_by_user_taste(df, user_prefs, boost=2.5):
+    """Boost movies whose genre matches user's top preferences."""
+    if not user_prefs or df.empty:
+        return df
+    
+    top_genres = list(user_prefs.keys())[:3]
+    
+    def score(row):
+        genre = row.get('genre', '')
+        base = row.get('vote_average', 0) or 0
+        if genre in top_genres:
+            return base + boost
+        return base
+    
+    df = df.copy()
+    df['taste_score'] = df.apply(score, axis=1)
+    return df.sort_values('taste_score', ascending=False)
 
-up_d = st.sidebar.file_uploader("Upload disliked_list.csv", type="csv", key="up_d")
-if up_d:
-    st.session_state.disliked = pd.read_csv(up_d)
-    save_list(st.session_state.disliked, DISLIKED_FILE)
-    st.sidebar.success("✅ Disliked restored!")
-    st.rerun()
+
+# ====================== FULL BACKUP SYSTEM (prevents data loss on Streamlit Cloud) ======================
+
+def get_full_backup_json() -> bytes:
+    """Export all user data as a single JSON file."""
+    backup = {
+        "watched": st.session_state.watched.to_dict(orient="records") if not st.session_state.watched.empty else [],
+        "to_watch": st.session_state.to_watch.to_dict(orient="records") if not st.session_state.to_watch.empty else [],
+        "disliked": st.session_state.disliked.to_dict(orient="records") if not st.session_state.disliked.empty else [],
+        "exported_at": pd.Timestamp.now().isoformat(),
+        "version": "2.0"
+    }
+    return json.dumps(backup, indent=2).encode("utf-8")
+
+
+def load_full_backup(uploaded_file):
+    """Load all data from a full JSON backup."""
+    try:
+        data = json.load(uploaded_file)
+        
+        if "watched" in data:
+            st.session_state.watched = pd.DataFrame(data["watched"])
+            save_list(st.session_state.watched, WATCHED_FILE)
+        
+        if "to_watch" in data:
+            st.session_state.to_watch = pd.DataFrame(data["to_watch"])
+            save_list(st.session_state.to_watch, TO_WATCH_FILE)
+        
+        if "disliked" in data:
+            st.session_state.disliked = pd.DataFrame(data["disliked"])
+            save_list(st.session_state.disliked, DISLIKED_FILE)
+        
+        return True
+    except Exception as e:
+        st.error(f"Failed to restore backup: {e}")
+        return False
+
+
+# ====================== BACKUP & RESTORE (IMPORTANT FOR CLOUD) ======================
+
+# Warning for Streamlit Cloud users
+st.sidebar.markdown("---")
+st.sidebar.warning(
+    "⚠️ **Streamlit Cloud Warning**\n\n"
+    "This app runs on free-tier Streamlit Cloud. "
+    "If the app sleeps due to inactivity, local files can be lost. "
+    "**Download a backup regularly!**"
+)
+
+st.sidebar.subheader("💾 Full Backup & Restore")
+
+# One-click full backup (recommended)
+if st.sidebar.button("📦 Download Full Backup (JSON)", use_container_width=True):
+    backup_bytes = get_full_backup_json()
+    st.sidebar.download_button(
+        label="⬇️ Click to Download Backup",
+        data=backup_bytes,
+        file_name=f"brous_movie_dashboard_backup_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.json",
+        mime="application/json",
+        use_container_width=True
+    )
+    st.toast("Backup ready — download it now!", icon="💾")
+
+st.sidebar.caption("One file containing everything. Highly recommended.")
+
+# Single restore uploader (much better UX)
+restored_file = st.sidebar.file_uploader(
+    "📤 Restore from Full Backup (JSON)",
+    type="json",
+    key="full_backup_restore"
+)
+if restored_file:
+    if load_full_backup(restored_file):
+        st.sidebar.success("✅ Full backup restored successfully!")
+        st.toast("All data restored!", icon="✅")
+        st.rerun()
 
 # ====================== FILE STATUS ======================
 st.sidebar.subheader("📁 Current Data")
@@ -302,18 +440,23 @@ st.sidebar.write(f"**Watched:** {len(st.session_state.get('watched', []))} movie
 st.sidebar.write(f"**To Watch:** {len(st.session_state.get('to_watch', []))} movies")
 st.sidebar.write(f"**Disliked:** {len(st.session_state.get('disliked', []))} movies")
 
-if st.sidebar.button("🧹 Clean Disliked List"):
-    st.session_state.disliked = st.session_state.disliked[~st.session_state.disliked['title'].isin(st.session_state.watched['title'].tolist())]
-    save_list(st.session_state.disliked, DISLIKED_FILE)
-    st.sidebar.success("✅ Cleaned!")
-    st.rerun()
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    if st.sidebar.button("🧹 Clean Disliked", use_container_width=True):
+        if not st.session_state.disliked.empty and not st.session_state.watched.empty:
+            st.session_state.disliked = st.session_state.disliked[~st.session_state.disliked['title'].isin(st.session_state.watched['title'].tolist())]
+            save_list(st.session_state.disliked, DISLIKED_FILE)
+            st.sidebar.success("Cleaned!")
+            st.rerun()
+with col2:
+    if st.sidebar.button("🔄 Reload CSVs", use_container_width=True):
+        st.session_state.watched = load_list(WATCHED_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
+        st.session_state.to_watch = load_list(TO_WATCH_FILE, ['title', 'year', 'matched_id', 'genre', 'poster_path'])
+        st.session_state.disliked = load_list(DISLIKED_FILE, ['title', 'year', 'matched_id', 'genre'])
+        st.toast("Reloaded from local CSVs", icon="🔄")
+        st.rerun()
 
-if st.sidebar.button("🔄 Reload from Files"):
-    st.session_state.watched = load_list(WATCHED_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
-    st.session_state.to_watch = load_list(TO_WATCH_FILE, ['title', 'year', 'matched_id', 'genre', 'poster_path'])
-    st.session_state.disliked = load_list(DISLIKED_FILE, ['title', 'year', 'matched_id', 'genre'])
-    st.toast("Reloaded from files", icon="🔄")
-    st.rerun()
+st.sidebar.caption("For Cloud users: Use the JSON backup above to avoid data loss.")
 
 # ====================== LOAD DATA ======================
 if 'watched' not in st.session_state:
@@ -326,6 +469,10 @@ if 'disliked' not in st.session_state:
     st.session_state.disliked = load_list(DISLIKED_FILE, ['title', 'year', 'matched_id', 'genre'])
 
 # ====================== HEADER ======================
+
+# Gentle reminder banner (always visible but not too loud)
+st.caption("💾 **Tip:** Use the **Full Backup (JSON)** button in the sidebar to protect your data on Streamlit Cloud.")
+
 st.markdown("""
 <div style="background: linear-gradient(90deg, #1e293b, #334155); padding: 24px; border-radius: 16px; margin-bottom: 24px; border: 1px solid #475569;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -364,17 +511,64 @@ with col2:
     """.format(len(st.session_state.to_watch)), unsafe_allow_html=True)
 
 with col3:
-    loved = safe_get_rating(st.session_state.watched)
-    disliked_count = len(st.session_state.disliked) if not st.session_state.disliked.empty else 0
+    avg_rating = round(st.session_state.watched['rating'].mean(), 1) if not st.session_state.watched.empty and 'rating' in st.session_state.watched.columns else "—"
     st.markdown("""
     <div class="stats-card">
-        <div style="font-size: 2.2rem; margin-bottom: 8px;">❤️</div>
+        <div style="font-size: 2.2rem; margin-bottom: 8px;">⭐</div>
         <div style="font-size: 2rem; font-weight: bold; color: #f87171;">{}</div>
-        <div style="color: #94a3b8; margin-top: 4px;">Loved / Disliked</div>
+        <div style="color: #94a3b8; margin-top: 4px;">Avg Rating</div>
     </div>
-    """.format(f"{loved} / {disliked_count}"), unsafe_allow_html=True)
+    """.format(avg_rating), unsafe_allow_html=True)
 
 st.divider()
+
+# === NEW: Global Cross-List Search ===
+with st.expander("🔎 Search All Your Lists", expanded=False):
+    search_query = st.text_input("Search across Watched, To Watch, and Disliked", key="global_cross_search")
+    
+    if search_query:
+        all_lists = pd.concat([
+            st.session_state.watched.assign(source="Watched"),
+            st.session_state.to_watch.assign(source="To Watch"),
+            st.session_state.disliked.assign(source="Disliked")
+        ], ignore_index=True)
+        
+        results = all_lists[all_lists['title'].str.contains(search_query, case=False, na=False)]
+        
+        if not results.empty:
+            st.write(f"Found {len(results)} matches:")
+            for _, row in results.iterrows():
+                st.markdown(f"- **{row['title']}** ({row.get('year', 'N/A')}) — *{row['source']}*")
+        else:
+            st.info("No matches found.")
+
+# === NEW: Visual Genre Breakdown (UI improvement) ===
+if not st.session_state.watched.empty:
+    genre_counts = st.session_state.watched['genre'].value_counts().reset_index()
+    genre_counts.columns = ['Genre', 'Count']
+    
+    if len(genre_counts) > 1:
+        chart = alt.Chart(genre_counts).mark_bar().encode(
+            x=alt.X('Count:Q'),
+            y=alt.Y('Genre:N', sort='-x'),
+            color=alt.Color('Genre:N', scale=alt.Scale(domain=list(genre_colors.keys()), range=list(genre_colors.values())))
+        ).properties(height=200, title="Your Watched Movies by Genre")
+        st.altair_chart(chart, use_container_width=True)
+
+    # === NEW: Decade breakdown chart ===
+    if not st.session_state.watched.empty:
+        watched_copy = st.session_state.watched.copy()
+        watched_copy['decade'] = (watched_copy['year'].astype(float) // 10 * 10).astype('Int64')
+        decade_counts = watched_copy['decade'].value_counts().reset_index()
+        decade_counts.columns = ['Decade', 'Count']
+        decade_counts = decade_counts.dropna()
+        
+        if len(decade_counts) > 1:
+            decade_chart = alt.Chart(decade_counts).mark_bar(color='#60a5fa').encode(
+                x=alt.X('Decade:O'),
+                y='Count:Q'
+            ).properties(height=180, title="Movies Watched by Decade")
+            st.altair_chart(decade_chart, use_container_width=True)
 
 # ====================== RECENTLY WATCHED (FIXED) ======================
 if len(st.session_state.watched) > 0:
@@ -385,6 +579,7 @@ if len(st.session_state.watched) > 0:
     recent['year'] = pd.to_numeric(recent['year'], errors='coerce')
     recent = recent.sort_values('year', ascending=False).head(8).reset_index(drop=True)
     
+    st.markdown('<div class="recently-watched-row">', unsafe_allow_html=True)
     cols = st.columns(8)
     
     for idx in range(8):
@@ -405,9 +600,16 @@ if len(st.session_state.watched) > 0:
                 year = row.get('year')
                 year_display = f"({int(year)})" if pd.notna(year) else ""
                 
-                st.caption(f"**{title}** {year_display}")
+                rating = row.get('rating')
+                rating_display = ""
+                if pd.notna(rating) and rating > 0:
+                    rating_display = " " + "★" * int(rating)
+                
+                st.caption(f"**{title}** {year_display}{rating_display}")
             else:
                 st.caption("—")
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
 
@@ -476,10 +678,11 @@ watched_count = len(st.session_state.watched)
 to_watch_count = len(st.session_state.to_watch)
 
 # ====================== TABS ======================
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "🎯 Recommendations",
     f"📝 To Watch ({to_watch_count})",
-    f"📋 Watched ({watched_count})"
+    f"📋 Watched ({watched_count})",
+    "📊 Stats"
 ])
 
 # ====================== GENRE COLORS ======================
@@ -497,11 +700,109 @@ def get_genre_color(genre):
 with tab1:
     st.header("🎯 Recommendations For You")
     
+    # === NEW: Your Taste Profile ===
+    user_prefs = get_user_genre_preferences()
+    if user_prefs:
+        with st.expander("🎭 Your Taste Profile (based on what you've loved)", expanded=False):
+            cols = st.columns(len(user_prefs))
+            for i, (genre, pct) in enumerate(user_prefs.items()):
+                with cols[i]:
+                    st.metric(genre, f"{pct}%")
+            st.caption("Recommendations are now boosted toward your top genres.")
+
+    # === NEW: Surprise Me button ===
+    if len(recs) > 0:
+        if st.button("🎲 Surprise Me (Pick something good for me)", width='stretch'):
+            surprise = recs.sample(1).iloc[0].to_dict()
+            st.session_state.surprise_pick = surprise
+            st.rerun()
+    
+    if 'surprise_pick' in st.session_state:
+        sp = st.session_state.surprise_pick
+        st.success(f"🎲 Surprise Pick: **{sp['title']}** ({sp.get('year', 'N/A')})")
+        st.caption(sp.get('overview', '')[:200] + "...")
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if st.button("➕ Add to To Watch", key="surprise_towatch"):
+                add_to_to_watch(sp)
+                del st.session_state.surprise_pick
+                st.rerun()
+        with c2:
+            if st.button("⭐ Rate & Loved", key="surprise_loved"):
+                with st.popover("Rate it"):
+                    r = get_star_rating_input(key_prefix="surprise_rate")
+                    if st.button("Save"):
+                        add_to_watched(sp, rating=r)
+                        del st.session_state.surprise_pick
+                        st.rerun()
+        with c3:
+            if st.button("❌ Not for me", key="surprise_no"):
+                del st.session_state.surprise_pick
+                st.rerun()
+        st.divider()
+    
     watched_titles = st.session_state.watched['title'].tolist() if len(st.session_state.watched) > 0 else []
     disliked_titles = st.session_state.disliked['title'].tolist() if len(st.session_state.disliked) > 0 else []
     to_watch_titles = st.session_state.to_watch['title'].tolist() if len(st.session_state.to_watch) > 0 else []
     
     recs = movies_df[~movies_df['title'].isin(watched_titles + disliked_titles + to_watch_titles)].copy()
+    
+    # === NEW: Recommendation Filters ===
+    with st.expander("🔍 Filter Recommendations", expanded=False):
+        fcol1, fcol2, fcol3 = st.columns(3)
+        
+        with fcol1:
+            min_year = st.slider("Min Year", 1950, 2026, 1980, step=5, key="rec_min_year")
+        with fcol2:
+            min_rating = st.slider("Min TMDB Score", 0.0, 10.0, 6.0, step=0.5, key="rec_min_score")
+        with fcol3:
+            available_genres = sorted(recs['genre'].dropna().unique().tolist())
+            selected_genres = st.multiselect("Genres", available_genres, default=[], key="rec_genres")
+        
+        hidden_gems = st.checkbox("✨ Hidden Gems mode (lower popularity, high match to your taste)", key="hidden_gems")
+    
+    # Apply filters
+    if 'year' in recs.columns:
+        recs = recs[recs['year'].astype(float, errors='ignore') >= min_year]
+    recs = recs[recs['vote_average'].astype(float, errors='ignore') >= min_rating]
+    if selected_genres:
+        recs = recs[recs['genre'].isin(selected_genres)]
+    
+    # Hidden Gems filter (lower TMDB score but still good, or we can use vote count as proxy for popularity)
+    if hidden_gems:
+        recs = recs[recs['vote_average'].astype(float, errors='ignore') >= 6.5]
+        # Sort by score descending but prefer lower "popularity" feel — simple proxy: prefer mid-tier scores
+        recs = recs.sort_values('vote_average', ascending=True)
+    
+    # === NEW: Personalization using user's taste ===
+    user_prefs = get_user_genre_preferences()
+    
+    if user_prefs:
+        recs = boost_by_user_taste(recs, user_prefs)
+    
+    # === Deeper diversity: limit consecutive same-genre movies ===
+    if len(recs) > 6:
+        diversified = []
+        last_genre = None
+        genre_streak = 0
+        max_streak = 2
+        
+        for _, row in recs.iterrows():
+            g = row.get('genre', 'Mixed')
+            if g == last_genre:
+                genre_streak += 1
+            else:
+                genre_streak = 1
+                last_genre = g
+            
+            if genre_streak <= max_streak:
+                diversified.append(row)
+            if len(diversified) >= 15:
+                break
+        
+        if len(diversified) > 0:
+            recs = pd.DataFrame(diversified)
     
     if st.session_state.global_search:
         recs = recs[recs['title'].str.contains(st.session_state.global_search, case=False, na=False)]
@@ -512,7 +813,8 @@ with tab1:
         similar_data = tmdb_request(f"/movie/{random_watched['matched_id']}/similar", {"page": 1})
         if similar_data and 'results' in similar_data:
             similar_movies = []
-            for m in similar_data['results'][:10]:
+            watched_title = random_watched.get('title', 'a movie you watched')
+            for m in similar_data['results'][:8]:
                 similar_movies.append({
                     'title': m.get('title') or m.get('original_title'),
                     'year': m.get('release_date', '')[:4] if m.get('release_date') else None,
@@ -520,10 +822,13 @@ with tab1:
                     'vote_average': m.get('vote_average'),
                     'poster_path': m.get('poster_path'),
                     'id': m.get('id'),
-                    'genre': 'Mixed'
+                    'genre': 'Mixed',
+                    'source': f"similar_to_{watched_title}"
                 })
             similar_df = pd.DataFrame(similar_movies)
             recs = pd.concat([recs, similar_df]).drop_duplicates(subset=['title'])
+            if user_prefs:
+                recs = boost_by_user_taste(recs, user_prefs)
     
     # Mood Selector
     st.subheader("😌 How are you feeling tonight?")
@@ -542,6 +847,11 @@ with tab1:
     if st.button("🎯 Get Recommendations for this Mood", width='stretch'):
         keywords = mood_options[selected_mood]
         mood_recs = recs[recs['overview'].str.contains('|'.join(keywords), case=False, na=False)]
+        
+        # Apply taste boosting and current filters to mood results
+        if user_prefs:
+            mood_recs = boost_by_user_taste(mood_recs, user_prefs)
+        
         st.session_state.mood_recommendations = mood_recs.head(8).to_dict('records')
         st.rerun()
     
@@ -559,6 +869,13 @@ with tab1:
                     add_to_to_watch(movie)
                     st.toast(f"Added {movie['title']} to To Watch!", icon="📝")
                     st.rerun()
+                if st.button(f"⭐ Rate & Loved", key=f"mood_love_{movie['id']}"):
+                    with st.popover("Rate this movie"):
+                        rating = get_star_rating_input(key_prefix=f"mood_love_{movie['id']}")
+                        if st.button("Save", key=f"mood_save_love_{movie['id']}"):
+                            add_to_watched(movie, rating=rating)
+                            st.toast(f"Added {movie['title']} with {rating}★", icon="⭐")
+                            st.rerun()
         if st.button("Clear Mood Recommendations"):
             del st.session_state.mood_recommendations
             st.rerun()
@@ -595,6 +912,12 @@ with tab1:
             
             if len(filtered) > 0:
                 filtered = filtered.copy()
+                
+                # Apply taste profile boosting
+                if user_prefs:
+                    filtered = boost_by_user_taste(filtered, user_prefs, boost=3.0)
+                
+                # Scoring
                 filtered['score'] = 0
                 filtered.loc[filtered['year'].astype(float) >= 2015, 'score'] += 2
                 filtered.loc[filtered['year'].astype(float) >= 2020, 'score'] += 1
@@ -631,10 +954,13 @@ with tab1:
                         del st.session_state.smart_picks
                         st.rerun()
                 with col_b:
-                    if st.button(f"❤️ Loved it", key=f"smart_love_{i}"):
-                        add_to_watched(pick, rating=5.0)
-                        del st.session_state.smart_picks
-                        st.rerun()
+                    if st.button(f"⭐ Rate & Loved", key=f"smart_love_{i}"):
+                        with st.popover("Rate this movie"):
+                            rating = get_star_rating_input(key_prefix=f"smart_love_{i}")
+                            if st.button("Save", key=f"smart_save_love_{i}"):
+                                add_to_watched(pick, rating=rating)
+                                del st.session_state.smart_picks
+                                st.rerun()
         
         if st.button("Clear Picks"):
             del st.session_state.smart_picks
@@ -647,6 +973,43 @@ with tab1:
         st.info("👋 Start by adding some movies you've watched in the sidebar!")
     else:
         recs = recs.head(15)
+        
+        # === NEW: Add "Why recommended" reasons (deeper logic) ===
+        recs = recs.copy()
+        recs['reason'] = ""
+        
+        top_genres = list(user_prefs.keys())[:3] if user_prefs else []
+        
+        for i, row in recs.iterrows():
+            reason = ""
+            genre = row.get('genre', 'Mixed')
+            
+            if genre in top_genres:
+                reason = f"Recommended because you love {genre}"
+            elif str(row.get('source', '')).startswith('similar_to_'):
+                base = row['source'].replace('similar_to_', '')
+                reason = f"Because you watched **{base}**"
+            
+            recs.at[i, 'reason'] = reason
+        
+        # Add some diversity - avoid too many from the same top genre
+        if len(recs) > 8 and top_genres:
+            diversified = []
+            genre_counts = {g: 0 for g in top_genres}
+            max_per_genre = 4
+            
+            for _, row in recs.iterrows():
+                g = row.get('genre')
+                if g in top_genres and genre_counts.get(g, 0) >= max_per_genre:
+                    continue
+                if g in top_genres:
+                    genre_counts[g] = genre_counts.get(g, 0) + 1
+                diversified.append(row)
+                if len(diversified) >= 15:
+                    break
+            
+            if diversified:
+                recs = pd.DataFrame(diversified)
         
         for idx, row in recs.iterrows():
             with st.container():
@@ -665,32 +1028,37 @@ with tab1:
                     genre_tag = f"<span style='color: {genre_color}; font-weight: bold;'>[{row.get('genre', 'Mixed')}]</span> "
                     st.markdown(f"**{genre_tag}{row['title']}** ({int(row['year']) if pd.notna(row['year']) else 'N/A'})", unsafe_allow_html=True)
                     st.caption(f"TMDB Score: {row.get('vote_average', 'N/A'):.1f}")
+                    
+                    # Show personalized reason when available
+                    if row.get('reason'):
+                        st.markdown(f"<div class='rec-reason'>✨ {row['reason']}</div>", unsafe_allow_html=True)
+                    
                     st.write(str(row['overview'])[:140] + "..." if len(str(row['overview'])) > 140 else row['overview'])
                     
-                    col_a, col_b = st.columns(2)
+                    # Action buttons - 2x2 grid on mobile, 4 columns on desktop
+                    btn_col1, btn_col2 = st.columns(2)
                     
-                    with col_a:
-                        if st.button("❤️ Loved it", key=f"loved_{row.get('id', idx)}", width='stretch'):
-                            add_to_watched(row, rating=5.0)
-                            st.toast(f"❤️ Loved {row['title']}!", icon="❤️")
+                    with btn_col1:
+                        if st.button("⭐ Rate & Add", key=f"loved_{row.get('id', idx)}", width='stretch'):
+                            with st.popover("Rate this movie"):
+                                rating = get_star_rating_input(key_prefix=f"rec_loved_{row.get('id', idx)}")
+                                if st.button("Save Rating", key=f"save_rate_{row.get('id', idx)}"):
+                                    add_to_watched(row, rating=rating)
+                                    st.toast(f"Added {row['title']} with {rating}★", icon="⭐")
+                                    st.rerun()
+                    
+                        if st.button("👎 Disliked", key=f"disliked_{row.get('id', idx)}", width='stretch'):
+                            add_to_disliked(row)
+                            add_to_watched(row, rating=None)
+                            st.toast(f"Added {row['title']} as Disliked", icon="👎")
                             st.rerun()
                     
-                    with col_b:
+                    with btn_col2:
                         if st.button("➕ To Watch", key=f"to_watch_{row.get('id', idx)}", width='stretch'):
                             add_to_to_watch(row)
                             st.toast(f"Added {row['title']} to To Watch!", icon="📝")
                             st.rerun()
                     
-                    col_c, col_d = st.columns(2)
-                    
-                    with col_c:
-                        if st.button("👎 Disliked", key=f"disliked_{row.get('id', idx)}", width='stretch'):
-                            add_to_disliked(row)
-                            add_to_watched(row, rating=None)   # still record that they saw it
-                            st.toast(f"Added {row['title']} as Disliked", icon="👎")
-                            st.rerun()
-                    
-                    with col_d:
                         if st.button("👎 Not Interested", key=f"not_interested_{row.get('id', idx)}", width='stretch'):
                             add_to_disliked(row)
                             st.toast(f"Got it — won't show again", icon="👎")
@@ -723,6 +1091,35 @@ with tab1:
                 
                 st.divider()
 
+# === NEW: Re-watch Suggestions (Highly Rated) ===
+high_rated = st.session_state.watched[
+    (st.session_state.watched['rating'].astype(float, errors='ignore') >= 4.0)
+].copy()
+
+if not high_rated.empty:
+    st.subheader("🔥 Re-watch Suggestions")
+    st.caption("Movies you've rated highly — perfect for a re-watch")
+    
+    rewatch_sample = high_rated.sample(min(4, len(high_rated)))
+    
+    cols = st.columns(4)
+    for i, (_, movie) in enumerate(rewatch_sample.iterrows()):
+        with cols[i]:
+            if pd.notna(movie.get('poster_path')):
+                st.image(f"https://image.tmdb.org/t/p/w200{movie['poster_path']}", width=90)
+            else:
+                st.caption("🎬")
+            
+            st.markdown(f"**{movie['title']}** ({int(movie['year']) if pd.notna(movie['year']) else 'N/A'})")
+            rating = movie.get('rating')
+            if pd.notna(rating):
+                st.caption("★" * int(rating))
+            
+            if st.button("➕ Add to To Watch", key=f"rewatch_{movie.get('id', i)}", width='stretch'):
+                add_to_to_watch(movie.to_dict())
+                st.toast(f"Added {movie['title']} to To Watch again!", icon="🔥")
+                st.rerun()
+
 # ====================== TO WATCH TAB ======================
 with tab2:
     st.header("📝 To Watch List")
@@ -741,11 +1138,14 @@ with tab2:
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button("❤️ Loved it", key="random_loved"):
-                    add_to_watched(rm, rating=5.0)
-                    remove_from_to_watch(rm['title'])
-                    del st.session_state.random_pick
-                    st.rerun()
+                if st.button("⭐ Rate & Mark Watched", key="random_loved"):
+                    with st.popover("Rate this movie"):
+                        rating = get_star_rating_input(key_prefix="random_rate")
+                        if st.button("Save & Mark Watched", key="save_random_rate"):
+                            add_to_watched(rm, rating=rating)
+                            remove_from_to_watch(rm['title'])
+                            del st.session_state.random_pick
+                            st.rerun()
             with col2:
                 if st.button("👎 Disliked", key="random_disliked"):
                     add_to_disliked(rm)
@@ -773,11 +1173,14 @@ with tab2:
                 
                 col_a, col_b = st.columns(2)
                 with col_a:
-                    if st.button("❤️ Loved", key=f"tw_loved_{i}", width='stretch'):
-                        add_to_watched(row, rating=5.0)
-                        st.session_state.to_watch = st.session_state.to_watch.drop(i)
-                        save_list(st.session_state.to_watch, TO_WATCH_FILE)
-                        st.rerun()
+                    if st.button("⭐ Rate & Watched", key=f"tw_loved_{i}", width='stretch'):
+                        with st.popover("Rate this movie"):
+                            rating = get_star_rating_input(key_prefix=f"tw_rate_{i}")
+                            if st.button("Save Rating", key=f"save_tw_rate_{i}"):
+                                add_to_watched(row, rating=rating)
+                                st.session_state.to_watch = st.session_state.to_watch.drop(i)
+                                save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                                st.rerun()
                 with col_b:
                     if st.button("👎 Disliked", key=f"tw_disliked_{i}", width='stretch'):
                         add_to_disliked(row)
@@ -876,3 +1279,74 @@ with tab3:
                 st.rerun()
         else:
             st.info("No movies match your search.")
+
+# ====================== STATS TAB (Dedicated & Enhanced) ======================
+with tab4:
+    st.header("📊 Your Stats & Insights")
+    
+    # Compact summary cards
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Movies Watched", len(st.session_state.watched))
+    with col2:
+        st.metric("In To Watch", len(st.session_state.to_watch))
+    with col3:
+        avg_r = round(st.session_state.watched['rating'].mean(), 2) if not st.session_state.watched.empty and 'rating' in st.session_state.watched.columns else "—"
+        st.metric("Average Rating", avg_r)
+    with col4:
+        loved = safe_get_rating(st.session_state.watched)
+        st.metric("Loved (5★)", loved)
+    
+    st.divider()
+    
+    # Rich visualizations
+    st.subheader("Genre Breakdown")
+    
+    if not st.session_state.watched.empty:
+        genre_counts = st.session_state.watched['genre'].value_counts().reset_index()
+        genre_counts.columns = ['Genre', 'Count']
+        
+        genre_chart = alt.Chart(genre_counts).mark_bar().encode(
+            x=alt.X('Count:Q'),
+            y=alt.Y('Genre:N', sort='-x'),
+            color=alt.Color('Genre:N', scale=alt.Scale(domain=list(genre_colors.keys()), range=list(genre_colors.values())))
+        ).properties(height=280)
+        st.altair_chart(genre_chart, use_container_width=True)
+    else:
+        st.info("Watch some movies to see your genre breakdown.")
+    
+    st.subheader("Decade Distribution")
+    
+    if not st.session_state.watched.empty:
+        watched_copy = st.session_state.watched.copy()
+        watched_copy['decade'] = (watched_copy['year'].astype(float) // 10 * 10).astype('Int64')
+        decade_counts = watched_copy['decade'].value_counts().reset_index()
+        decade_counts.columns = ['Decade', 'Count']
+        decade_counts = decade_counts.dropna().sort_values('Decade')
+        
+        decade_chart = alt.Chart(decade_counts).mark_bar(color='#60a5fa').encode(
+            x=alt.X('Decade:O'),
+            y='Count:Q'
+        ).properties(height=220)
+        st.altair_chart(decade_chart, use_container_width=True)
+    else:
+        st.info("Add some watched movies to see decade distribution.")
+    
+    st.subheader("Rating Distribution")
+    
+    if not st.session_state.watched.empty and 'rating' in st.session_state.watched.columns:
+        rated = st.session_state.watched[st.session_state.watched['rating'].notna()].copy()
+        if not rated.empty:
+            rating_counts = rated['rating'].value_counts().reindex([1,2,3,4,5], fill_value=0).reset_index()
+            rating_counts.columns = ['Rating', 'Count']
+            
+            rating_chart = alt.Chart(rating_counts).mark_bar(color='#f87171').encode(
+                x=alt.X('Rating:O'),
+                y='Count:Q'
+            ).properties(height=200, title="How you rate movies")
+            st.altair_chart(rating_chart, use_container_width=True)
+        else:
+            st.info("Rate some movies to see your rating distribution.")
+    else:
+        st.info("Rate some movies to see your rating distribution.")
