@@ -272,37 +272,50 @@ def normalize_movie_record(data: dict) -> dict:
 
 
 def add_to_watched(movie_data: dict, rating=None):
-    """Safely add a movie to the watched list."""
+    """Safely add a movie to the watched list (robust dedup on normalized title)."""
     record = normalize_movie_record(movie_data)
     if rating is not None:
         record['rating'] = rating
 
     new_entry = pd.DataFrame([record])
-    st.session_state.watched = pd.concat([st.session_state.watched, new_entry]).drop_duplicates(subset=['title'])
+    combined = pd.concat([st.session_state.watched, new_entry], ignore_index=True)
+    # Normalize for dedup so "The Thing" and " the thing " don't both survive
+    combined['_norm'] = combined['title'].astype(str).str.strip().str.lower()
+    combined = combined.drop_duplicates(subset=['_norm'], keep='last').drop(columns=['_norm'], errors='ignore')
+    st.session_state.watched = combined
     save_list(st.session_state.watched, WATCHED_FILE)
 
 
 def add_to_to_watch(movie_data: dict):
-    """Safely add a movie to the To Watch list."""
+    """Safely add a movie to the To Watch list (robust dedup)."""
     record = normalize_movie_record(movie_data)
     new_entry = pd.DataFrame([record])
-    st.session_state.to_watch = pd.concat([st.session_state.to_watch, new_entry]).drop_duplicates(subset=['title'])
+    combined = pd.concat([st.session_state.to_watch, new_entry], ignore_index=True)
+    combined['_norm'] = combined['title'].astype(str).str.strip().str.lower()
+    combined = combined.drop_duplicates(subset=['_norm'], keep='last').drop(columns=['_norm'], errors='ignore')
+    st.session_state.to_watch = combined
     save_list(st.session_state.to_watch, TO_WATCH_FILE)
 
 
 def add_to_disliked(movie_data: dict):
-    """Safely add a movie to the disliked list."""
+    """Safely add a movie to the disliked list (robust dedup)."""
     record = normalize_movie_record(movie_data)
     new_entry = pd.DataFrame([record])
-    st.session_state.disliked = pd.concat([st.session_state.disliked, new_entry]).drop_duplicates(subset=['title'])
+    combined = pd.concat([st.session_state.disliked, new_entry], ignore_index=True)
+    combined['_norm'] = combined['title'].astype(str).str.strip().str.lower()
+    combined = combined.drop_duplicates(subset=['_norm'], keep='last').drop(columns=['_norm'], errors='ignore')
+    st.session_state.disliked = combined
     save_list(st.session_state.disliked, DISLIKED_FILE)
 
 
 def remove_from_to_watch(title: str):
-    """Remove a movie from To Watch list."""
-    if 'to_watch' in st.session_state and not st.session_state.to_watch.empty:
-        st.session_state.to_watch = st.session_state.to_watch[st.session_state.to_watch['title'] != title]
-        save_list(st.session_state.to_watch, TO_WATCH_FILE)
+    """Remove a movie from To Watch list (normalizes for safety)."""
+    if 'to_watch' not in st.session_state or st.session_state.to_watch.empty or not title:
+        return
+    norm = str(title).strip().lower()
+    mask = st.session_state.to_watch['title'].astype(str).str.strip().str.lower() != norm
+    st.session_state.to_watch = st.session_state.to_watch[mask]
+    save_list(st.session_state.to_watch, TO_WATCH_FILE)
 
 
 def safe_get_rating(df: pd.DataFrame):
@@ -706,6 +719,12 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
     st.header("🎯 Recommendations For You")
     
+    # Show confirmation if we just marked something as watched from here
+    # (We do NOT pop the flag here — let the Watched tab consume it so it can show its own message)
+    if st.session_state.get('just_marked_watched_from_recs'):
+        title = st.session_state.get('just_marked_watched_from_recs')
+        st.success(f"✅ **{title}** was just marked as watched from Recommendations! Switch to the Watched tab to see it.")
+    
     # === NEW: Your Taste Profile ===
     user_prefs = get_user_genre_preferences()
     if user_prefs:
@@ -835,13 +854,13 @@ with tab1:
                 del st.session_state.surprise_pick
                 st.rerun()
         with c2:
-            if st.button("⭐ Rate & Loved", key="surprise_loved"):
-                with st.popover("Rate it"):
-                    r = get_star_rating_input(key_prefix="surprise_rate")
-                    if st.button("Save"):
-                        add_to_watched(sp, rating=r)
-                        del st.session_state.surprise_pick
-                        st.rerun()
+            with st.popover("⭐ Rate & Mark Watched", key="surprise_rate_pop"):
+                r = get_star_rating_input(key_prefix="surprise_pop_rate")
+                if st.button("Confirm & Save", key="surprise_confirm_rate", width='stretch'):
+                    add_to_watched(sp, rating=r)
+                    del st.session_state.surprise_pick
+                    st.toast(f"Marked {sp['title']} as watched ({r}★)", icon="✅")
+                    st.rerun()
         with c3:
             if st.button("❌ Not for me", key="surprise_no"):
                 del st.session_state.surprise_pick
@@ -887,13 +906,12 @@ with tab1:
                     add_to_to_watch(movie)
                     st.toast(f"Added {movie['title']} to To Watch!", icon="📝")
                     st.rerun()
-                if st.button(f"⭐ Rate & Loved", key=f"mood_love_{movie['id']}"):
-                    with st.popover("Rate this movie"):
-                        rating = get_star_rating_input(key_prefix=f"mood_love_{movie['id']}")
-                        if st.button("Save", key=f"mood_save_love_{movie['id']}"):
-                            add_to_watched(movie, rating=rating)
-                            st.toast(f"Added {movie['title']} with {rating}★", icon="⭐")
-                            st.rerun()
+                with st.popover(f"⭐ Rate & Mark Watched", key=f"mood_rate_pop_{movie['id']}"):
+                    rating = get_star_rating_input(key_prefix=f"mood_pop_rate_{movie['id']}")
+                    if st.button("Confirm & Save", key=f"mood_confirm_rate_{movie['id']}", width='stretch'):
+                        add_to_watched(movie, rating=rating)
+                        st.toast(f"Marked {movie['title']} as watched ({rating}★)", icon="✅")
+                        st.rerun()
         if st.button("Clear Mood Recommendations"):
             del st.session_state.mood_recommendations
             st.rerun()
@@ -972,13 +990,13 @@ with tab1:
                         del st.session_state.smart_picks
                         st.rerun()
                 with col_b:
-                    if st.button(f"⭐ Rate & Loved", key=f"smart_love_{i}"):
-                        with st.popover("Rate this movie"):
-                            rating = get_star_rating_input(key_prefix=f"smart_love_{i}")
-                            if st.button("Save", key=f"smart_save_love_{i}"):
-                                add_to_watched(pick, rating=rating)
-                                del st.session_state.smart_picks
-                                st.rerun()
+                    with st.popover(f"⭐ Rate & Mark Watched", key=f"smart_rate_pop_{i}"):
+                        rating = get_star_rating_input(key_prefix=f"smart_pop_rate_{i}")
+                        if st.button("Confirm & Save", key=f"smart_confirm_rate_{i}", width='stretch'):
+                            add_to_watched(pick, rating=rating)
+                            del st.session_state.smart_picks
+                            st.toast(f"Marked {pick['title']} as watched ({rating}★)", icon="✅")
+                            st.rerun()
         
         if st.button("Clear Picks"):
             del st.session_state.smart_picks
@@ -1057,21 +1075,33 @@ with tab1:
                     btn_col1, btn_col2 = st.columns(2)
                     
                     with btn_col1:
-                        if st.button("✅ Mark as Watched", key=f"watched_{row.get('id', idx)}", width='stretch'):
-                            with st.popover("Rate this movie"):
-                                rating = get_star_rating_input(key_prefix=f"rec_watched_{row.get('id', idx)}", default=4)
-                                if st.button("Save & Mark Watched", key=f"save_watched_{row.get('id', idx)}"):
-                                    add_to_watched(row, rating=rating)
-                                    
-                                    # Also remove from To Watch if it's there
-                                    if not st.session_state.to_watch.empty:
-                                        st.session_state.to_watch = st.session_state.to_watch[
-                                            st.session_state.to_watch['title'] != row.get('title')
-                                        ]
-                                        save_list(st.session_state.to_watch, TO_WATCH_FILE)
-                                    
-                                    st.toast(f"Marked {row['title']} as watched ({rating}★)", icon="✅")
-                                    st.rerun()
+                        # Always-rendered popover trigger (reliable Streamlit pattern — no conditional outer button)
+                        with st.popover("✅ Mark Watched + Rate", key=f"rate_pop_{row.get('id', idx)}"):
+                            rating = get_star_rating_input(key_prefix=f"rec_pop_rate_{row.get('id', idx)}", default=4)
+                            if st.button("Confirm & Add to Watched", key=f"confirm_rec_rate_{row.get('id', idx)}", width='stretch'):
+                                add_to_watched(row, rating=rating)
+                                
+                                # Remove from To Watch using the canonical helper
+                                remove_from_to_watch(row.get('title'))
+                                
+                                # Force a fresh load from disk (most reliable across Streamlit Cloud sleeps)
+                                st.session_state.watched = load_list(WATCHED_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
+                                
+                                # Flag for Watched tab highlight + recently added tracking
+                                st.session_state['just_marked_watched_from_recs'] = row.get('title')
+                                
+                                if 'recently_added_from_recs' not in st.session_state:
+                                    st.session_state['recently_added_from_recs'] = []
+                                if row.get('title') not in st.session_state['recently_added_from_recs']:
+                                    st.session_state['recently_added_from_recs'].insert(0, row.get('title'))
+                                    st.session_state['recently_added_from_recs'] = st.session_state['recently_added_from_recs'][:5]
+                                
+                                st.session_state.watched_sort = "Recently Added"
+                                st.session_state.watched_search = ""
+                                st.session_state.watched_genre_filter = []
+                                
+                                st.toast(f"Marked {row['title']} as watched ({rating}★)", icon="✅")
+                                st.rerun()
                     
                         if st.button("👎 Disliked", key=f"disliked_{row.get('id', idx)}", width='stretch'):
                             add_to_disliked(row)
@@ -1164,14 +1194,15 @@ with tab2:
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button("⭐ Rate & Mark Watched", key="random_loved"):
-                    with st.popover("Rate this movie"):
-                        rating = get_star_rating_input(key_prefix="random_rate")
-                        if st.button("Save & Mark Watched", key="save_random_rate"):
-                            add_to_watched(rm, rating=rating)
-                            remove_from_to_watch(rm['title'])
-                            del st.session_state.random_pick
-                            st.rerun()
+                # Reliable popover pattern
+                with st.popover("⭐ Rate & Mark Watched", key="random_rate_pop"):
+                    rating = get_star_rating_input(key_prefix="random_pop_rate")
+                    if st.button("Confirm & Save", key="random_confirm_rate", width='stretch'):
+                        add_to_watched(rm, rating=rating)
+                        remove_from_to_watch(rm['title'])
+                        del st.session_state.random_pick
+                        st.toast(f"Marked {rm['title']} as watched ({rating}★)", icon="✅")
+                        st.rerun()
             with col2:
                 if st.button("👎 Disliked", key="random_disliked"):
                     add_to_disliked(rm)
@@ -1199,20 +1230,21 @@ with tab2:
                 
                 col_a, col_b = st.columns(2)
                 with col_a:
-                    if st.button("⭐ Rate & Watched", key=f"tw_loved_{i}", width='stretch'):
-                        with st.popover("Rate this movie"):
-                            rating = get_star_rating_input(key_prefix=f"tw_rate_{i}")
-                            if st.button("Save Rating", key=f"save_tw_rate_{i}"):
-                                add_to_watched(row, rating=rating)
-                                st.session_state.to_watch = st.session_state.to_watch.drop(i)
-                                save_list(st.session_state.to_watch, TO_WATCH_FILE)
-                                st.rerun()
+                    # Reliable popover pattern (no outer conditional button)
+                    with st.popover("⭐ Rate & Mark Watched", key=f"tw_rate_pop_{i}"):
+                        rating = get_star_rating_input(key_prefix=f"tw_pop_rate_{i}")
+                        if st.button("Confirm & Save", key=f"tw_confirm_rate_{i}", width='stretch'):
+                            add_to_watched(row, rating=rating)
+                            remove_from_to_watch(row.get('title'))
+                            st.session_state.to_watch = load_list(TO_WATCH_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
+                            st.toast(f"Marked {row['title']} as watched ({rating}★)", icon="✅")
+                            st.rerun()
                 with col_b:
                     if st.button("👎 Disliked", key=f"tw_disliked_{i}", width='stretch'):
                         add_to_disliked(row)
                         add_to_watched(row, rating=None)
-                        st.session_state.to_watch = st.session_state.to_watch.drop(i)
-                        save_list(st.session_state.to_watch, TO_WATCH_FILE)
+                        remove_from_to_watch(row.get('title'))
+                        st.session_state.to_watch = load_list(TO_WATCH_FILE, ['title', 'year', 'rating', 'matched_id', 'genre', 'poster_path'])
                         st.rerun()
                 
                 st.markdown('</div>', unsafe_allow_html=True)
@@ -1224,14 +1256,55 @@ with tab3:
     if len(st.session_state.watched) == 0:
         st.info("📭 You haven't added any movies yet. Start by importing from Letterboxd or adding manually!")
     else:
-        col1, col2 = st.columns([3, 2])
-        with col1:
-            search_term = st.text_input("🔍 Search watched movies", key="watched_search")
-        with col2:
-            sort_option = st.selectbox("Sort by", ["Recently Added", "Year (Newest)", "Year (Oldest)", "Rating (High to Low)", "Title A-Z"], key="watched_sort")
+        # Handle "just added from Recommendations" — show a dedicated highlight section at the very top
+        just_added_title = st.session_state.get('just_marked_watched_from_recs')
+        
+        if just_added_title:
+            st.success(f"✅ **{just_added_title}** was just added from Recommendations with your chosen rating!")
+            st.caption("It should appear below (sorted by 'Recently Added'). Any previous filters have been cleared.")
+            
+            # Force a very clean view for this render
+            search_term = ""
+            selected_genres = []
+            sort_option = "Recently Added"
+            
+            # Pop the flag
+            st.session_state.pop('just_marked_watched_from_recs', None)
+            
+            # Extra guaranteed visibility: render recently added items from Recommendations
+            # at the very top in a highlighted section, completely bypassing normal filters
+            if st.session_state.get('recently_added_from_recs'):
+                st.markdown("**🆕 Recently added from Recommendations (always visible here):**")
+                
+                for title in st.session_state['recently_added_from_recs'][:3]:
+                    match = st.session_state.watched[st.session_state.watched['title'] == title]
+                    if not match.empty:
+                        row = match.iloc[0]
+                        with st.container():
+                            st.markdown('<div class="movie-card" style="border: 2px solid #60a5fa; background: #1e3a5f;">', unsafe_allow_html=True)
+                            c1, c2 = st.columns([1, 5])
+                            with c1:
+                                if pd.notna(row.get('poster_path')):
+                                    st.image(f"https://image.tmdb.org/t/p/w200{row['poster_path']}", width=70)
+                                else:
+                                    st.caption("🎬")
+                            with c2:
+                                st.markdown(f"**{row['title']}** ({int(row['year']) if pd.notna(row.get('year')) else 'N/A'})")
+                                rating = row.get('rating')
+                                if pd.notna(rating):
+                                    st.caption("★" * int(rating))
+                                st.caption("Just added from Recommendations")
+                            st.markdown('</div>', unsafe_allow_html=True)
+                st.divider()
+        else:
+            col1, col2 = st.columns([3, 2])
+            with col1:
+                search_term = st.text_input("🔍 Search watched movies", key="watched_search")
+            with col2:
+                sort_option = st.selectbox("Sort by", ["Recently Added", "Year (Newest)", "Year (Oldest)", "Rating (High to Low)", "Title A-Z"], key="watched_sort")
 
-        all_genres = sorted(st.session_state.watched['genre'].dropna().unique().tolist())
-        selected_genres = st.multiselect("Filter by Genre", all_genres, default=[], key="watched_genre_filter")
+            all_genres = sorted(st.session_state.watched['genre'].dropna().unique().tolist())
+            selected_genres = st.multiselect("Filter by Genre", all_genres, default=[], key="watched_genre_filter")
 
         filtered_watched = st.session_state.watched.copy()
         
