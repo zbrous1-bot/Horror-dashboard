@@ -716,7 +716,37 @@ with tab1:
                     st.metric(genre, f"{pct}%")
             st.caption("Recommendations are now boosted toward your top genres.")
 
-
+    # === NEW: Surprise Me button ===
+    if len(recs) > 0:
+        if st.button("🎲 Surprise Me (Pick something good for me)", width='stretch'):
+            surprise = recs.sample(1).iloc[0].to_dict()
+            st.session_state.surprise_pick = surprise
+            st.rerun()
+    
+    if 'surprise_pick' in st.session_state:
+        sp = st.session_state.surprise_pick
+        st.success(f"🎲 Surprise Pick: **{sp['title']}** ({sp.get('year', 'N/A')})")
+        st.caption(sp.get('overview', '')[:200] + "...")
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if st.button("➕ Add to To Watch", key="surprise_towatch"):
+                add_to_to_watch(sp)
+                del st.session_state.surprise_pick
+                st.rerun()
+        with c2:
+            if st.button("⭐ Rate & Loved", key="surprise_loved"):
+                with st.popover("Rate it"):
+                    r = get_star_rating_input(key_prefix="surprise_rate")
+                    if st.button("Save"):
+                        add_to_watched(sp, rating=r)
+                        del st.session_state.surprise_pick
+                        st.rerun()
+        with c3:
+            if st.button("❌ Not for me", key="surprise_no"):
+                del st.session_state.surprise_pick
+                st.rerun()
+        st.divider()
     
     watched_titles = st.session_state.watched['title'].tolist() if len(st.session_state.watched) > 0 else []
     disliked_titles = st.session_state.disliked['title'].tolist() if len(st.session_state.disliked) > 0 else []
@@ -815,38 +845,6 @@ with tab1:
             recs = pd.concat([recs, similar_df]).drop_duplicates(subset=['title'])
             if user_prefs:
                 recs = boost_by_user_taste(recs, user_prefs)
-    
-    # === Surprise Me (placed after recs is fully built) ===
-    if len(recs) > 0:
-        if st.button("🎲 Surprise Me (Pick something good for me)", width='stretch'):
-            surprise = recs.sample(1).iloc[0].to_dict()
-            st.session_state.surprise_pick = surprise
-            st.rerun()
-    
-    if 'surprise_pick' in st.session_state:
-        sp = st.session_state.surprise_pick
-        st.success(f"🎲 Surprise Pick: **{sp['title']}** ({sp.get('year', 'N/A')})")
-        st.caption(sp.get('overview', '')[:200] + "...")
-        
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            if st.button("➕ Add to To Watch", key="surprise_towatch"):
-                add_to_to_watch(sp)
-                del st.session_state.surprise_pick
-                st.rerun()
-        with c2:
-            if st.button("⭐ Rate & Loved", key="surprise_loved"):
-                with st.popover("Rate it"):
-                    r = get_star_rating_input(key_prefix="surprise_rate")
-                    if st.button("Save"):
-                        add_to_watched(sp, rating=r)
-                        del st.session_state.surprise_pick
-                        st.rerun()
-        with c3:
-            if st.button("❌ Not for me", key="surprise_no"):
-                del st.session_state.surprise_pick
-                st.rerun()
-        st.divider()
     
     # Mood Selector
     st.subheader("😌 How are you feeling tonight?")
@@ -1233,20 +1231,29 @@ with tab3:
 
         filtered_watched = st.session_state.watched.copy()
         
+        # Robust numeric conversion for sorting (year/rating often arrive as strings from JSON/CSV restores)
+        for col in ['year', 'rating']:
+            if col in filtered_watched.columns:
+                filtered_watched[col] = pd.to_numeric(filtered_watched[col], errors='coerce')
+        
         if selected_genres:
             filtered_watched = filtered_watched[filtered_watched['genre'].isin(selected_genres)]
         
         if search_term:
             filtered_watched = filtered_watched[filtered_watched['title'].str.contains(search_term, case=False, na=False)]
         
-        if sort_option == "Year (Newest)":
-            filtered_watched = filtered_watched.sort_values('year', ascending=False)
-        elif sort_option == "Year (Oldest)":
-            filtered_watched = filtered_watched.sort_values('year', ascending=True)
-        elif sort_option == "Rating (High to Low)":
-            filtered_watched = filtered_watched.sort_values('rating', ascending=False)
-        elif sort_option == "Title A-Z":
-            filtered_watched = filtered_watched.sort_values('title', ascending=True)
+        try:
+            if sort_option == "Year (Newest)":
+                filtered_watched = filtered_watched.sort_values('year', ascending=False)
+            elif sort_option == "Year (Oldest)":
+                filtered_watched = filtered_watched.sort_values('year', ascending=True)
+            elif sort_option == "Rating (High to Low)":
+                filtered_watched = filtered_watched.sort_values('rating', ascending=False)
+            elif sort_option == "Title A-Z":
+                filtered_watched = filtered_watched.sort_values('title', ascending=True)
+        except Exception:
+            # Fallback: if sorting still fails for any reason, leave data unsorted
+            pass
 
         if len(filtered_watched) > 0:
             cols = st.columns(2)
