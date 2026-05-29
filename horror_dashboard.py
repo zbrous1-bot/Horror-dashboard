@@ -685,7 +685,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Stats"
 ])
 
-# ====================== GENRE COLORS ======================
+# ====================== GENRE COLORS (defined at top level for use in all tabs) ======================
 genre_colors = {
     "Horror": "#ff6b6b", "SciFi": "#4ecdc4", "Thriller": "#a855f7",
     "Action": "#f97316", "Adventure": "#eab308", "Mystery": "#8b5cf6",
@@ -1284,69 +1284,113 @@ with tab3:
 with tab4:
     st.header("📊 Your Stats & Insights")
     
-    # Compact summary cards
+    # ====================== SAFE DATA ACCESS ======================
+    # These guards prevent the entire Stats tab from crashing if data is missing or malformed
+    watched_df = st.session_state.get("watched", pd.DataFrame())
+    to_watch_df = st.session_state.get("to_watch", pd.DataFrame())
+    disliked_df = st.session_state.get("disliked", pd.DataFrame())
+    
+    # Ensure expected columns exist to avoid KeyErrors
+    for df in [watched_df, to_watch_df, disliked_df]:
+        if not df.empty:
+            for col in ['title', 'year', 'rating', 'genre']:
+                if col not in df.columns:
+                    df[col] = None
+    
+    # ====================== SUMMARY METRICS ======================
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Movies Watched", len(st.session_state.watched))
+        st.metric("Movies Watched", len(watched_df) if not watched_df.empty else 0)
     with col2:
-        st.metric("In To Watch", len(st.session_state.to_watch))
+        st.metric("In To Watch", len(to_watch_df) if not to_watch_df.empty else 0)
     with col3:
-        avg_r = round(st.session_state.watched['rating'].mean(), 2) if not st.session_state.watched.empty and 'rating' in st.session_state.watched.columns else "—"
+        try:
+            avg_r = round(watched_df['rating'].mean(), 2) if not watched_df.empty and 'rating' in watched_df.columns else "—"
+        except Exception:
+            avg_r = "—"
         st.metric("Average Rating", avg_r)
     with col4:
-        loved = safe_get_rating(st.session_state.watched)
+        try:
+            loved = safe_get_rating(watched_df)
+        except Exception:
+            loved = 0
         st.metric("Loved (5★)", loved)
     
     st.divider()
     
-    # Rich visualizations
+    # ====================== GENRE BREAKDOWN ======================
     st.subheader("Genre Breakdown")
     
-    if not st.session_state.watched.empty:
-        genre_counts = st.session_state.watched['genre'].value_counts().reset_index()
-        genre_counts.columns = ['Genre', 'Count']
-        
-        genre_chart = alt.Chart(genre_counts).mark_bar().encode(
-            x=alt.X('Count:Q'),
-            y=alt.Y('Genre:N', sort='-x'),
-            color=alt.Color('Genre:N', scale=alt.Scale(domain=list(genre_colors.keys()), range=list(genre_colors.values())))
-        ).properties(height=280)
-        st.altair_chart(genre_chart, use_container_width=True)
-    else:
-        st.info("Watch some movies to see your genre breakdown.")
+    try:
+        if not watched_df.empty and 'genre' in watched_df.columns:
+            genre_counts = watched_df['genre'].value_counts().reset_index()
+            genre_counts.columns = ['Genre', 'Count']
+            
+            # Safe access to genre_colors
+            domain = list(genre_colors.keys()) if 'genre_colors' in globals() else None
+            range_colors = list(genre_colors.values()) if 'genre_colors' in globals() else None
+            
+            chart_kwargs = {}
+            if domain and range_colors:
+                chart_kwargs['color'] = alt.Color('Genre:N', scale=alt.Scale(domain=domain, range=range_colors))
+            
+            genre_chart = alt.Chart(genre_counts).mark_bar().encode(
+                x=alt.X('Count:Q'),
+                y=alt.Y('Genre:N', sort='-x'),
+                **chart_kwargs
+            ).properties(height=280)
+            st.altair_chart(genre_chart, use_container_width=True)
+        else:
+            st.info("Watch some movies to see your genre breakdown.")
+    except Exception as e:
+        st.warning(f"Could not render genre chart: {e}")
     
+    # ====================== DECADE DISTRIBUTION ======================
     st.subheader("Decade Distribution")
     
-    if not st.session_state.watched.empty:
-        watched_copy = st.session_state.watched.copy()
-        watched_copy['decade'] = (watched_copy['year'].astype(float) // 10 * 10).astype('Int64')
-        decade_counts = watched_copy['decade'].value_counts().reset_index()
-        decade_counts.columns = ['Decade', 'Count']
-        decade_counts = decade_counts.dropna().sort_values('Decade')
-        
-        decade_chart = alt.Chart(decade_counts).mark_bar(color='#60a5fa').encode(
-            x=alt.X('Decade:O'),
-            y='Count:Q'
-        ).properties(height=220)
-        st.altair_chart(decade_chart, use_container_width=True)
-    else:
-        st.info("Add some watched movies to see decade distribution.")
+    try:
+        if not watched_df.empty and 'year' in watched_df.columns:
+            watched_copy = watched_df.copy()
+            watched_copy['decade'] = (watched_copy['year'].astype(float, errors='ignore') // 10 * 10).astype('Int64')
+            decade_counts = watched_copy['decade'].value_counts().reset_index()
+            decade_counts.columns = ['Decade', 'Count']
+            decade_counts = decade_counts.dropna().sort_values('Decade')
+            
+            if not decade_counts.empty:
+                decade_chart = alt.Chart(decade_counts).mark_bar(color='#60a5fa').encode(
+                    x=alt.X('Decade:O'),
+                    y='Count:Q'
+                ).properties(height=220)
+                st.altair_chart(decade_chart, use_container_width=True)
+            else:
+                st.info("Not enough year data yet.")
+        else:
+            st.info("Add some watched movies with year information to see decade distribution.")
+    except Exception as e:
+        st.warning(f"Could not render decade chart: {e}")
     
+    # ====================== RATING DISTRIBUTION ======================
     st.subheader("Rating Distribution")
     
-    if not st.session_state.watched.empty and 'rating' in st.session_state.watched.columns:
-        rated = st.session_state.watched[st.session_state.watched['rating'].notna()].copy()
-        if not rated.empty:
-            rating_counts = rated['rating'].value_counts().reindex([1,2,3,4,5], fill_value=0).reset_index()
-            rating_counts.columns = ['Rating', 'Count']
-            
-            rating_chart = alt.Chart(rating_counts).mark_bar(color='#f87171').encode(
-                x=alt.X('Rating:O'),
-                y='Count:Q'
-            ).properties(height=200, title="How you rate movies")
-            st.altair_chart(rating_chart, use_container_width=True)
+    try:
+        if not watched_df.empty and 'rating' in watched_df.columns:
+            rated = watched_df[watched_df['rating'].notna()].copy()
+            if not rated.empty:
+                rating_counts = rated['rating'].value_counts().reindex([1,2,3,4,5], fill_value=0).reset_index()
+                rating_counts.columns = ['Rating', 'Count']
+                
+                rating_chart = alt.Chart(rating_counts).mark_bar(color='#f87171').encode(
+                    x=alt.X('Rating:O'),
+                    y='Count:Q'
+                ).properties(height=200, title="How you rate movies (1 = lowest, 5 = highest)")
+                st.altair_chart(rating_chart, use_container_width=True)
+            else:
+                st.info("Rate some movies (using the star selector) to see your rating distribution.")
         else:
             st.info("Rate some movies to see your rating distribution.")
-    else:
-        st.info("Rate some movies to see your rating distribution.")
+    except Exception as e:
+        st.warning(f"Could not render rating distribution: {e}")
+    
+    st.divider()
+    st.caption("Tip: Download a full JSON backup regularly from the sidebar to protect your data on Streamlit Cloud.")
