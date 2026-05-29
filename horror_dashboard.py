@@ -716,7 +716,37 @@ with tab1:
                     st.metric(genre, f"{pct}%")
             st.caption("Recommendations are now boosted toward your top genres.")
 
-
+    # === NEW: Surprise Me button ===
+    if len(recs) > 0:
+        if st.button("🎲 Surprise Me (Pick something good for me)", width='stretch'):
+            surprise = recs.sample(1).iloc[0].to_dict()
+            st.session_state.surprise_pick = surprise
+            st.rerun()
+    
+    if 'surprise_pick' in st.session_state:
+        sp = st.session_state.surprise_pick
+        st.success(f"🎲 Surprise Pick: **{sp['title']}** ({sp.get('year', 'N/A')})")
+        st.caption(sp.get('overview', '')[:200] + "...")
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if st.button("➕ Add to To Watch", key="surprise_towatch"):
+                add_to_to_watch(sp)
+                del st.session_state.surprise_pick
+                st.rerun()
+        with c2:
+            if st.button("⭐ Rate & Loved", key="surprise_loved"):
+                with st.popover("Rate it"):
+                    r = get_star_rating_input(key_prefix="surprise_rate")
+                    if st.button("Save"):
+                        add_to_watched(sp, rating=r)
+                        del st.session_state.surprise_pick
+                        st.rerun()
+        with c3:
+            if st.button("❌ Not for me", key="surprise_no"):
+                del st.session_state.surprise_pick
+                st.rerun()
+        st.divider()
     
     watched_titles = st.session_state.watched['title'].tolist() if len(st.session_state.watched) > 0 else []
     disliked_titles = st.session_state.disliked['title'].tolist() if len(st.session_state.disliked) > 0 else []
@@ -805,38 +835,6 @@ with tab1:
             recs = pd.concat([recs, similar_df]).drop_duplicates(subset=['title'])
             if user_prefs:
                 recs = boost_by_user_taste(recs, user_prefs)
-    
-    # === Surprise Me (now safely after recs is fully built) ===
-    if len(recs) > 0:
-        if st.button("🎲 Surprise Me (Pick something good for me)", width='stretch'):
-            surprise = recs.sample(1).iloc[0].to_dict()
-            st.session_state.surprise_pick = surprise
-            st.rerun()
-    
-    if 'surprise_pick' in st.session_state:
-        sp = st.session_state.surprise_pick
-        st.success(f"🎲 Surprise Pick: **{sp['title']}** ({sp.get('year', 'N/A')})")
-        st.caption(sp.get('overview', '')[:200] + "...")
-        
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            if st.button("➕ Add to To Watch", key="surprise_towatch"):
-                add_to_to_watch(sp)
-                del st.session_state.surprise_pick
-                st.rerun()
-        with c2:
-            if st.button("⭐ Rate & Loved", key="surprise_loved"):
-                with st.popover("Rate it"):
-                    r = get_star_rating_input(key_prefix="surprise_rate")
-                    if st.button("Save"):
-                        add_to_watched(sp, rating=r)
-                        del st.session_state.surprise_pick
-                        st.rerun()
-        with c3:
-            if st.button("❌ Not for me", key="surprise_no"):
-                del st.session_state.surprise_pick
-                st.rerun()
-        st.divider()
     
     # Mood Selector
     st.subheader("😌 How are you feeling tonight?")
@@ -1047,12 +1045,12 @@ with tab1:
                     btn_col1, btn_col2 = st.columns(2)
                     
                     with btn_col1:
-                        if st.button("⭐ Rate & Add", key=f"loved_{row.get('id', idx)}", width='stretch'):
+                        if st.button("✅ Mark as Watched", key=f"watched_{row.get('id', idx)}", width='stretch'):
                             with st.popover("Rate this movie"):
-                                rating = get_star_rating_input(key_prefix=f"rec_loved_{row.get('id', idx)}")
-                                if st.button("Save Rating", key=f"save_rate_{row.get('id', idx)}"):
+                                rating = get_star_rating_input(key_prefix=f"rec_watched_{row.get('id', idx)}", default=3)
+                                if st.button("Save & Mark Watched", key=f"save_watched_{row.get('id', idx)}"):
                                     add_to_watched(row, rating=rating)
-                                    st.toast(f"Added {row['title']} with {rating}★", icon="⭐")
+                                    st.toast(f"Marked {row['title']} as watched ({rating}★)", icon="✅")
                                     st.rerun()
                     
                         if st.button("👎 Disliked", key=f"disliked_{row.get('id', idx)}", width='stretch'):
